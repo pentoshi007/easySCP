@@ -8,6 +8,7 @@ export interface TransferSpec {
   target: FileSystem;
   sources: string[];
   destination: string;
+  intoDirectory?: boolean;
 }
 
 export interface PlannedFile {
@@ -146,8 +147,9 @@ export async function planTransfer(
   const single = sources.length === 1;
   let into: boolean;
   if (destStat?.kind === 'dir') into = true;
+  else if (destStat && spec.intoDirectory) throw new AppError(`Not a folder: ${destination}`);
   else if (destStat) into = false;
-  else into = !single || endsWithSeparator(target, destination);
+  else into = spec.intoDirectory === true || !single || endsWithSeparator(target, destination);
 
   const roots: Entry[] = [];
   for (const path of sources) {

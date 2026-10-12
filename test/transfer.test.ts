@@ -363,3 +363,31 @@ describe('meter and history', () => {
     expect(entries.map((entry) => entry.destination).slice(0, 2)).toEqual(['/second', '/first']);
   });
 });
+
+describe('planning', () => {
+  it('creates a missing folder when asked to copy into it', async () => {
+    await writeFile(path.join(local, 'solo.txt'), 'solo');
+    const plan = await planTransfer({
+      source: localFs,
+      target: remote,
+      sources: [path.join(local, 'solo.txt')],
+      destination: remotePath('fresh-folder'),
+      intoDirectory: true,
+    });
+    expect(plan.files[0]?.target).toBe(remotePath('fresh-folder', 'solo.txt'));
+    await runTransfer(plan);
+    expect(await readFile(real('fresh-folder', 'solo.txt'), 'utf8')).toBe('solo');
+  });
+
+  it('refuses to copy a folder into itself', async () => {
+    await mkdir(path.join(local, 'loop'));
+    await expect(
+      planTransfer({
+        source: localFs,
+        target: localFs,
+        sources: [path.join(local, 'loop')],
+        destination: path.join(local, 'loop', 'inner'),
+      }),
+    ).rejects.toThrow(/into itself/);
+  });
+});
