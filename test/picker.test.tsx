@@ -7,7 +7,7 @@ import { Browser } from '../src/ui/picker/Browser.js';
 import { buildRows, splitQuery } from '../src/ui/picker/model.js';
 import { rankTop } from '../src/ui/picker/rank.js';
 import { parseDroppedPaths } from '../src/util/dropped.js';
-import { DOWN, ENTER, ESC, LEFT, RIGHT, strip, TAB, tick } from './helpers/ink.js';
+import { DOWN, ENTER, ESC, LEFT, RIGHT, strip, TAB, tick, waitFor } from './helpers/ink.js';
 import { tempDir } from './helpers/tmp.js';
 
 describe('parseDroppedPaths', () => {
@@ -119,23 +119,26 @@ describe('Browser', () => {
     const app = render(
       <Browser fs={localFs} start={root} mode={mode} onSubmit={onSubmit} onCancel={onCancel} />,
     );
-    await tick(80);
+    const frame = () => strip(app.lastFrame());
+    await waitFor(() => !frame().includes('Loading'));
     const press = async (...keys: string[]) => {
       for (const value of keys) {
         app.stdin.write(value);
         await tick(60);
       }
     };
-    return { ...app, onSubmit, onCancel, press, frame: () => strip(app.lastFrame()) };
+    const shows = (text: string) => waitFor(() => frame().includes(text));
+    return { ...app, onSubmit, onCancel, press, frame, shows };
   }
 
   it('navigates folders and selects multiple files', async () => {
     const view = await mount('files');
+    await view.shows('readme.md');
     expect(view.frame()).toContain('photos/');
-    expect(view.frame()).toContain('readme.md');
     await view.press(RIGHT);
-    expect(view.frame()).toContain('cat.png');
+    await view.shows('cat.png');
     await view.press(DOWN, ' ', LEFT);
+    await view.shows('readme.md');
     expect(view.frame()).toContain('1 selected');
     await view.press('read', TAB, ENTER);
     expect(view.onSubmit).toHaveBeenCalledWith([
@@ -146,6 +149,7 @@ describe('Browser', () => {
 
   it('submits the highlighted file when nothing is selected', async () => {
     const view = await mount('file');
+    await view.shows('readme.md');
     await view.press('readme', ENTER);
     expect(view.onSubmit).toHaveBeenCalledWith([path.join(root, 'readme.md')]);
   });
@@ -153,13 +157,14 @@ describe('Browser', () => {
   it('accepts typed paths', async () => {
     const view = await mount('files');
     await view.press('photos/trip/');
-    expect(view.frame()).toContain('beach.jpg');
+    await view.shows('beach.jpg');
     await view.press(ENTER);
     expect(view.onSubmit).toHaveBeenCalledWith([path.join(root, 'photos', 'trip', 'beach.jpg')]);
   });
 
   it('chooses folders and clears before cancelling', async () => {
     const view = await mount('dir');
+    await view.shows('photos/');
     expect(view.frame()).toContain('Use this folder');
     expect(view.frame()).not.toContain('readme.md');
     await view.press('pho', ESC);
@@ -171,9 +176,8 @@ describe('Browser', () => {
   it('searches subfolders', async () => {
     const view = await mount('files');
     await view.press('\u0006');
-    await tick(200);
+    await view.shows('items indexed');
     await view.press('beach');
-    expect(view.frame()).toContain('photos/trip/beach.jpg');
-    expect(view.frame()).toContain('items indexed');
+    await view.shows('photos/trip/beach.jpg');
   });
 });

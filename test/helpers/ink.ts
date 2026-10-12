@@ -42,3 +42,11 @@ const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`, 'g');
 export function strip(frame: string | undefined): string {
   return (frame ?? '').replace(ANSI, '');
 }
+
+export async function waitFor(check: () => boolean, timeout = 3000): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('Timed out waiting for the expected frame');
+    await tick(20);
+  }
+}
