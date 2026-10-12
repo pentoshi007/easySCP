@@ -35,6 +35,7 @@ export interface Writer {
 
 export interface FileSystem {
   readonly local: boolean;
+  readonly closed: boolean;
   readonly label: string;
   readonly path: PlatformPath;
   readonly home: string;

@@ -83,6 +83,7 @@ class LocalWriter implements Writer {
 
 export class LocalFileSystem implements FileSystem {
   readonly local = true;
+  readonly closed = false;
   readonly label = 'this computer';
   readonly path = path;
   readonly home = os.homedir();
