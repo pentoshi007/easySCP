@@ -12,6 +12,7 @@ import {
   type SFTPWrapper,
   utils,
 } from 'ssh2';
+import { generateKey } from './keys.js';
 
 const { STATUS_CODE, flagsToString } = utils.sftp;
 
@@ -313,8 +314,8 @@ function authenticate(ctx: AuthContext, users: TestUser[], log: string[]): void 
 export async function startTestServer(options: TestServerOptions): Promise<TestServer> {
   const home = options.home ?? '/home/test';
   await fs.mkdir(path.join(options.root, ...home.split('/').filter(Boolean)), { recursive: true });
-  const pair = utils.generateKeyPairSync('ed25519');
-  const hostKey = utils.parseKey(pair.private) as ParsedKey;
+  const pair = generateKey();
+  const hostKey = pair.parsed;
   const clients = new Set<Connection>();
   const state = { connections: 0, authAttempts: [] as string[], commands: [] as string[] };
 

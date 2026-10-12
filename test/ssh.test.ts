@@ -1,7 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import net, { type AddressInfo } from 'node:net';
 import path from 'node:path';
-import { utils } from 'ssh2';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CancelledError } from '../src/core/errors.js';
 import { createHost, type HostDraft } from '../src/core/hosts.js';
@@ -10,10 +9,11 @@ import { describeHostKey, trustHostKey } from '../src/ssh/knownHosts.js';
 import { Session } from '../src/ssh/session.js';
 import { isolatedEnvironment } from './helpers/env.js';
 import { scripted } from './helpers/interaction.js';
+import { generateKey } from './helpers/keys.js';
 import { startTestServer, type TestServer } from './helpers/sftpServer.js';
 import { tempDir } from './helpers/tmp.js';
 
-const keyPair = utils.generateKeyPairSync('ed25519', {
+const keyPair = generateKey('ed25519', {
   passphrase: 'open sesame',
   cipher: 'aes256-cbc',
   rounds: 2,
@@ -86,10 +86,8 @@ describe('ssh sessions', () => {
       /not trusted/,
     );
 
-    const impostor = utils.generateKeyPairSync('ed25519');
-    const parsed = utils.parseKey(impostor.public);
-    if (parsed instanceof Error || Array.isArray(parsed)) throw parsed;
-    await trustHostKey('127.0.0.1', server.port, describeHostKey(parsed.getPublicSSH()));
+    const impostor = generateKey();
+    await trustHostKey('127.0.0.1', server.port, describeHostKey(impostor.parsed.getPublicSSH()));
 
     const interaction = scripted({ trust: false });
     await expect(open(target, { interaction })).rejects.toThrow(/has changed/);

@@ -2,7 +2,6 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { utils } from 'ssh2';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkEntries,
@@ -13,16 +12,11 @@ import {
   preferredHostKeyAlgorithms,
   trustHostKey,
 } from '../src/ssh/knownHosts.js';
+import { generateKey } from './helpers/keys.js';
 import { isolateAppHome, tempDir } from './helpers/tmp.js';
 
 function makeKey(type: 'ed25519' | 'ecdsa' = 'ed25519') {
-  const pair =
-    type === 'ecdsa'
-      ? utils.generateKeyPairSync('ecdsa', { bits: 256 })
-      : utils.generateKeyPairSync('ed25519');
-  const parsed = utils.parseKey(pair.public);
-  if (parsed instanceof Error || Array.isArray(parsed)) throw new Error('bad key');
-  return describeHostKey(parsed.getPublicSSH());
+  return describeHostKey(generateKey(type).parsed.getPublicSSH());
 }
 
 function hashed(name: string): string {
