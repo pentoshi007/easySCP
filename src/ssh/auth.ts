@@ -28,6 +28,7 @@ export class Authenticator {
   private readonly steps: Step[];
   private readonly notes: string[] = [];
   private readonly updates = new Map<SecretKind, string>();
+  private readonly triedKeys = new Set<string>();
   private index = 0;
   private methods: AuthenticationType[] = [];
   private passwordPrompts = 0;
@@ -129,16 +130,20 @@ export class Authenticator {
         return explicitKey;
       case 'password':
         return [this.passwordStep(), this.keyboardStep()];
-      default:
+      default: {
+        const defaults = defaultIdentityFiles().filter(
+          (file) => !identityFile || expandHome(identityFile) !== file,
+        );
         return [
-          ...explicitKey,
+          ...(identityFile ? [this.keyStep(identityFile, true, true)] : []),
+          ...defaults.map((file) => this.keyStep(file, false, true)),
           ...this.agentSteps(false),
-          ...defaultIdentityFiles()
-            .filter((file) => !identityFile || expandHome(identityFile) !== file)
-            .map((file) => this.keyStep(file, false)),
+          ...explicitKey,
+          ...defaults.map((file) => this.keyStep(file, false)),
           this.passwordStep(),
           this.keyboardStep(),
         ];
+      }
     }
   }
 
@@ -161,15 +166,18 @@ export class Authenticator {
     });
   }
 
-  private keyStep(file: string, explicit: boolean): Step {
+  private keyStep(file: string, explicit: boolean, plainOnly = false): Step {
     let used = false;
-    const label = collapseHome(expandHome(file));
+    const absolute = expandHome(file);
+    const label = collapseHome(absolute);
     return {
       method: 'publickey',
       next: async () => {
-        if (used) return undefined;
+        if (used || this.triedKeys.has(absolute)) return undefined;
         used = true;
         let result = await loadPrivateKey(file);
+        if (plainOnly && result.status === 'encrypted') return undefined;
+        this.triedKeys.add(absolute);
         if (result.status === 'missing') {
           if (explicit) this.note(`Identity file not found: ${label}`);
           return undefined;
