@@ -16,9 +16,17 @@ export function expandInput(fs: FileSystem, input: string): string {
 export function resolveInput(fs: FileSystem, input: string, cwd: string): string {
   const expanded = expandInput(fs, input);
   if (!expanded) return cwd;
-  return fs.path.isAbsolute(expanded)
+  const resolved = fs.path.isAbsolute(expanded)
     ? fs.path.normalize(expanded)
     : fs.path.resolve(cwd, expanded);
+  return stripTrailingSeparator(fs, resolved);
+}
+
+export function stripTrailingSeparator(fs: FileSystem, target: string): string {
+  const { root } = fs.path.parse(target);
+  let end = target.length;
+  while (end > root.length && (target[end - 1] === '/' || target[end - 1] === fs.path.sep)) end--;
+  return target.slice(0, end);
 }
 
 export function displayPath(fs: FileSystem, target: string): string {
@@ -41,12 +49,12 @@ export function isHidden(name: string): boolean {
 }
 
 export function compareEntries(a: Entry, b: Entry): number {
-  const dirA = a.kind === 'dir' ? 0 : 1;
-  const dirB = b.kind === 'dir' ? 0 : 1;
-  if (dirA !== dirB) return dirA - dirB;
   const hiddenA = isHidden(a.name) ? 1 : 0;
   const hiddenB = isHidden(b.name) ? 1 : 0;
   if (hiddenA !== hiddenB) return hiddenA - hiddenB;
+  const dirA = a.kind === 'dir' ? 0 : 1;
+  const dirB = b.kind === 'dir' ? 0 : 1;
+  if (dirA !== dirB) return dirA - dirB;
   return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 }
 
