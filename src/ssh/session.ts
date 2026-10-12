@@ -37,6 +37,7 @@ export class Session {
     };
     connection.client.once('close', markClosed);
     sftp.once('close', markClosed);
+    sftp.on('error', () => markClosed());
   }
 
   static async open(host: Host, options: ConnectOptions): Promise<Session> {
@@ -55,6 +56,11 @@ export class Session {
 
   get client(): Client {
     return this.connection.client;
+  }
+
+  get serverSoftware(): string | undefined {
+    const version = (this.connection.client as unknown as { _remoteVer?: unknown })._remoteVer;
+    return typeof version === 'string' && version ? version : undefined;
   }
 
   get closed(): boolean {
