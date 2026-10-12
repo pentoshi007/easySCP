@@ -432,7 +432,9 @@ interface RowViewProps {
 
 function RowView({ row, active, mode, checked, wide, medium, fs }: RowViewProps) {
   const pointer = (
-    <Text color={active ? colors.accent : undefined}>{active ? symbols.pointer : ' '} </Text>
+    <Box flexShrink={0}>
+      <Text color={active ? colors.accent : undefined}>{active ? symbols.pointer : ' '} </Text>
+    </Box>
   );
 
   if (row.kind !== 'entry') {
@@ -445,17 +447,16 @@ function RowView({ row, active, mode, checked, wide, medium, fs }: RowViewProps)
     return (
       <Box>
         {pointer}
-        <Text wrap="truncate-end">
-          <Text color={active ? colors.accent : color} bold={active}>
-            {icon} {label}
+        <Box flexShrink={1}>
+          <Text wrap="truncate-end">
+            <Text color={active ? colors.accent : color} bold={active}>
+              {icon} {label}
+            </Text>
+            {row.kind === 'here' || row.kind === 'shortcut' ? (
+              <Text color={colors.muted}> {displayPath(fs, row.path)}</Text>
+            ) : null}
           </Text>
-          {row.kind === 'here' ? (
-            <Text color={colors.muted}> {displayPath(fs, row.path)}</Text>
-          ) : null}
-          {row.kind === 'shortcut' ? (
-            <Text color={colors.muted}> {displayPath(fs, row.path)}</Text>
-          ) : null}
-        </Text>
+        </Box>
       </Box>
     );
   }
@@ -467,9 +468,11 @@ function RowView({ row, active, mode, checked, wide, medium, fs }: RowViewProps)
     <Box>
       {pointer}
       {mode === 'files' ? (
-        <Text color={checked ? colors.success : colors.muted}>
-          {checked ? symbols.checked : symbols.unchecked}{' '}
-        </Text>
+        <Box flexShrink={0}>
+          <Text color={checked ? colors.success : colors.muted}>
+            {checked ? symbols.checked : symbols.unchecked}{' '}
+          </Text>
+        </Box>
       ) : null}
       <Box flexGrow={1} flexShrink={1}>
         <Text wrap="truncate-middle">

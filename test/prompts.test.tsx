@@ -1,3 +1,4 @@
+import { Box } from 'ink';
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { ConfirmPrompt } from '../src/ui/prompts/ConfirmPrompt.js';
@@ -102,6 +103,27 @@ describe('SelectPrompt', () => {
     expect(ctl.submit).toHaveBeenCalledWith(2);
     await press(stdin, UP, ENTER);
     expect(ctl.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates long rows to the available width', async () => {
+    const long = 'x'.repeat(200);
+    const { lastFrame } = render(
+      <Box width={40} flexDirection="column">
+        <SelectPrompt
+          controls={controls<number>()}
+          options={{
+            choices: [
+              { value: 1, label: `first ${long}`, hint: long },
+              { value: 2, label: 'second', hint: long },
+            ],
+          }}
+        />
+      </Box>,
+    );
+    await tick();
+    const lines = strip(lastFrame()).split('\n');
+    expect(lines.some((line) => line.includes('second'))).toBe(true);
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(40);
   });
 });
 

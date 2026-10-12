@@ -11,6 +11,7 @@ import type { PromptControls } from '../ui.js';
 
 export interface Choice<T> {
   value: T;
+  key?: string;
   label: string;
   hint?: string;
   description?: string;
@@ -66,6 +67,7 @@ function useChoices<T>(options: SelectOptions<T>) {
 
 function keyOf<T>(choice: Choice<T>): string {
   const { value } = choice;
+  if (choice.key) return choice.key;
   return typeof value === 'string' || typeof value === 'number' ? String(value) : choice.label;
 }
 
@@ -101,10 +103,12 @@ function ChoiceRows<T>({ state, emptyText, marker }: ChoiceRowsProps<T>) {
           const disabled = Boolean(item.disabled);
           return (
             <Box key={keyOf(item)}>
-              <Text color={isActive ? colors.accent : undefined}>
-                {isActive ? symbols.pointer : ' '}{' '}
-              </Text>
-              {marker ? marker(item, isActive) : null}
+              <Box flexShrink={0}>
+                <Text color={isActive ? colors.accent : undefined}>
+                  {isActive ? symbols.pointer : ' '}{' '}
+                </Text>
+                {marker ? marker(item, isActive) : null}
+              </Box>
               <Box flexShrink={1}>
                 <Text wrap="truncate-end">
                   <Highlight
@@ -113,7 +117,7 @@ function ChoiceRows<T>({ state, emptyText, marker }: ChoiceRowsProps<T>) {
                     color={disabled ? colors.muted : isActive ? colors.accent : item.color}
                     bold={isActive}
                   />
-                  {item.hint ? <Text color={colors.muted}> {item.hint}</Text> : null}
+                  {item.hint ? <Text color={colors.muted}>{`  ${item.hint}`}</Text> : null}
                   {disabled ? <Text color={colors.muted}> ({item.disabled})</Text> : null}
                 </Text>
               </Box>
