@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import type { Dirent, Stats } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import net, { type AddressInfo } from 'node:net';
@@ -34,6 +35,7 @@ export interface TestServer {
   hostKey: ParsedKey;
   connections: number;
   authAttempts: string[];
+  commands: string[];
   close(): Promise<void>;
 }
 
@@ -314,7 +316,7 @@ export async function startTestServer(options: TestServerOptions): Promise<TestS
   const pair = utils.generateKeyPairSync('ed25519');
   const hostKey = utils.parseKey(pair.private) as ParsedKey;
   const clients = new Set<Connection>();
-  const state = { connections: 0, authAttempts: [] as string[] };
+  const state = { connections: 0, authAttempts: [] as string[], commands: [] as string[] };
 
   const server = new Server({ hostKeys: [pair.private] }, (client) => {
     state.connections++;
@@ -334,7 +336,22 @@ export async function startTestServer(options: TestServerOptions): Promise<TestS
       client.on('session', (acceptSession) => {
         const session = acceptSession();
         session.on('sftp', (acceptSftp) => serveSftp(acceptSftp(), options.root, home));
-        session.on('exec', (_accept, reject) => reject?.());
+        session.on('exec', (accept, reject, info) => {
+          state.commands.push(info.command);
+          if (!options.supportsExec) {
+            reject?.();
+            return;
+          }
+          const channel = accept();
+          const child = spawn('/bin/sh', ['-c', info.command], { cwd: options.root });
+          child.stdout.pipe(channel, { end: false });
+          child.stderr.pipe(channel.stderr, { end: false });
+          channel.on('close', () => child.kill());
+          child.on('close', (code) => {
+            channel.exit(code ?? 1);
+            channel.end();
+          });
+        });
       });
     });
   });
@@ -349,6 +366,7 @@ export async function startTestServer(options: TestServerOptions): Promise<TestS
       return state.connections;
     },
     authAttempts: state.authAttempts,
+    commands: state.commands,
     close: () =>
       new Promise<void>((resolve) => {
         for (const client of clients) client.end();

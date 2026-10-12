@@ -1,11 +1,11 @@
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach } from 'vitest';
+import { afterAll } from 'vitest';
 
 const created: string[] = [];
 
-afterEach(async () => {
+afterAll(async () => {
   await Promise.all(
     created.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5 })),
   );
