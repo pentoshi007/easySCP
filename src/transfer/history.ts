@@ -53,10 +53,21 @@ export async function listHistory(): Promise<HistoryEntry[]> {
   return (await store.read()).entries;
 }
 
+function sameTransfer(a: Omit<HistoryEntry, 'id' | 'at'>, b: HistoryEntry): boolean {
+  return (
+    a.direction === b.direction &&
+    a.hostId === b.hostId &&
+    a.destination === b.destination &&
+    a.sources.length === b.sources.length &&
+    a.sources.every((source, index) => source === b.sources[index])
+  );
+}
+
 export async function recordTransfer(entry: Omit<HistoryEntry, 'id' | 'at'>): Promise<void> {
   const full: HistoryEntry = { ...entry, id: randomUUID(), at: Date.now() };
   await store.update((file) => {
-    file.entries = [full, ...file.entries].slice(0, MAX_ENTRIES);
+    const others = file.entries.filter((existing) => !sameTransfer(entry, existing));
+    file.entries = [full, ...others].slice(0, MAX_ENTRIES);
     return file;
   });
 }

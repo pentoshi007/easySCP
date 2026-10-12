@@ -359,8 +359,13 @@ describe('meter and history', () => {
     };
     await recordTransfer({ ...base, destination: '/first' });
     await recordTransfer({ ...base, destination: '/second' });
+    await recordTransfer({ ...base, destination: '/first', status: 'cancelled' });
     const entries = await listHistory();
-    expect(entries.map((entry) => entry.destination).slice(0, 2)).toEqual(['/second', '/first']);
+    expect(entries.map((entry) => [entry.destination, entry.status]).slice(0, 2)).toEqual([
+      ['/first', 'cancelled'],
+      ['/second', 'done'],
+    ]);
+    expect(entries.filter((entry) => entry.destination === '/first')).toHaveLength(1);
   });
 });
 

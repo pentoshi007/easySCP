@@ -34,9 +34,19 @@ export function describeEntry(entry: HistoryEntry): { label: string; hint: strin
       ? `${entry.hostName}:${entry.destination}`
       : displayPath(localFs, entry.destination);
   const label = `${arrow} ${what} ${symbols.arrowRight} ${truncateMiddle(destination, 48)}`;
-  const status = entry.status === 'done' ? '' : ` ${symbols.dot} ${entry.status}`;
-  const hint = `${entry.direction === 'upload' ? 'to' : 'from'} ${entry.hostName} ${symbols.dot} ${plural(entry.files, 'file')} ${symbols.dot} ${formatBytes(entry.bytes)} ${symbols.dot} ${formatRelative(entry.at)}${status}`;
-  return { label, hint };
+  const amount =
+    entry.files > 0
+      ? `${plural(entry.files, 'file')} ${symbols.dot} ${formatBytes(entry.bytes)}`
+      : entry.status === 'done'
+        ? 'nothing new'
+        : '';
+  const parts = [
+    `${entry.direction === 'upload' ? 'to' : 'from'} ${entry.hostName}`,
+    entry.status === 'done' ? '' : entry.status,
+    amount,
+    formatRelative(entry.at),
+  ];
+  return { label, hint: parts.filter(Boolean).join(` ${symbols.dot} `) };
 }
 
 function HistoryTable({ entries }: { entries: HistoryEntry[] }) {
@@ -94,6 +104,7 @@ export async function historyCommand(ctx: Context): Promise<Outcome | undefined>
 
   const choices: Choice<HistoryEntry>[] = entries.map((entry) => ({
     value: entry,
+    key: entry.id,
     ...describeEntry(entry),
     color: entry.status === 'done' ? undefined : STATUS_COLOR[entry.status],
     description: entry.error,

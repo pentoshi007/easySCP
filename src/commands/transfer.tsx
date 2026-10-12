@@ -414,19 +414,22 @@ export async function transferFlow(ctx: Context, request: TransferRequest): Prom
   const outcome = report(ui, result, upload ? 'Sent' : 'Downloaded', where);
 
   const remoteDir = upload ? plan.anchor : parentDir(remote, sources[0] as string);
+  const changed = result.files > 0 || result.status !== 'done';
   await Promise.all([
-    recordTransfer({
-      direction: request.direction,
-      hostId: host.id,
-      hostName: host.name,
-      sources,
-      destination,
-      files: result.files,
-      bytes: result.bytes,
-      durationMs: Math.round(result.durationMs),
-      status: result.status,
-      ...(result.error ? { error: result.error.message } : {}),
-    }),
+    changed
+      ? recordTransfer({
+          direction: request.direction,
+          hostId: host.id,
+          hostName: host.name,
+          sources,
+          destination,
+          files: result.files,
+          bytes: result.bytes,
+          durationMs: Math.round(result.durationMs),
+          status: result.status,
+          ...(result.error ? { error: result.error.message } : {}),
+        })
+      : undefined,
     result.files > 0 && remoteDir ? rememberRemoteDir(host.id, remoteDir) : undefined,
     result.files > 0 && !upload ? rememberLocalDir(plan.anchor) : undefined,
   ]).catch(() => undefined);
