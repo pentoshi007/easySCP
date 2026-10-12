@@ -102,7 +102,7 @@ export class Ui {
   }
 
   get columns(): number {
-    return this.streams.stdout.columns || 80;
+    return this.streams.stdout.columns || (this.streams.stdout.isTTY ? 80 : 200);
   }
 
   print(node: ReactNode): void {
