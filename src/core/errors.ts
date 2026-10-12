@@ -22,6 +22,10 @@ export class InterruptedError extends CancelledError {
   }
 }
 
+export function wentBack(error: unknown): boolean {
+  return error instanceof CancelledError && !(error instanceof InterruptedError);
+}
+
 export function isCancelled(error: unknown): boolean {
   return error instanceof CancelledError || (error instanceof Error && error.name === 'AbortError');
 }

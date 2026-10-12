@@ -78,3 +78,13 @@ describe('host store', () => {
     await expect(requireHost('pro')).rejects.toMatchObject({ hint: 'Did you mean "prod"?' });
   });
 });
+
+describe('suggestHostName', () => {
+  it('derives readable unique names', async () => {
+    const { suggestHostName } = await import('../src/core/hosts.js');
+    expect(suggestHostName('prod.example.com', [])).toBe('prod');
+    expect(suggestHostName('10.0.0.5', [])).toBe('server-5');
+    const taken = [{ name: 'prod' }] as never[];
+    expect(suggestHostName('prod.example.com', taken)).toBe('prod-2');
+  });
+});

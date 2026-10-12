@@ -92,6 +92,26 @@ export function sameName(a: string, b: string): boolean {
   return a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
 }
 
+export function suggestHostName(hostname: string, hosts: Host[]): string {
+  const isIp = /^[\d.]+$/.test(hostname) || hostname.includes(':');
+  const base = isIp
+    ? `server-${hostname.split(/[.:]/).filter(Boolean).at(-1) ?? '1'}`
+    : (hostname.split('.')[0] ?? hostname);
+  const clean = base.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '') || 'server';
+  let candidate = clean.slice(0, 60);
+  for (let index = 2; hosts.some((host) => sameName(host.name, candidate)); index++) {
+    candidate = `${clean.slice(0, 56)}-${index}`;
+  }
+  return candidate;
+}
+
+export function sanitizeHostName(name: string): string {
+  return name
+    .replace(/[^A-Za-z0-9._-]/g, '-')
+    .replace(/^[^A-Za-z0-9]+/, '')
+    .slice(0, 64);
+}
+
 export function hostLabel(host: Pick<Host, 'user' | 'hostname' | 'port'>): string {
   const hostname = host.hostname.includes(':') ? `[${host.hostname}]` : host.hostname;
   return `${host.user}@${hostname}${host.port === 22 ? '' : `:${host.port}`}`;
@@ -161,8 +181,12 @@ export async function requireHost(name: string): Promise<Host> {
   );
 }
 
-export async function createHost(draft: HostDraft): Promise<Host> {
-  const host: Host = { ...draft, id: randomUUID(), createdAt: Date.now() };
+export function newHostId(): string {
+  return randomUUID();
+}
+
+export async function createHost(draft: HostDraft, id = newHostId()): Promise<Host> {
+  const host = stripEmpty({ ...draft, id, createdAt: Date.now() });
   await store.update((file) => {
     const error = validateHostName(host.name, file.hosts);
     if (error) throw new AppError(error);
