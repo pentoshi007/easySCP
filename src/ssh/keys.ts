@@ -1,7 +1,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { type ParsedKey, utils } from 'ssh2';
+import type { ParsedKey } from 'ssh2';
 import { expandHome, sshDir } from '../core/paths.js';
+import { utils } from './lib.js';
 
 const DEFAULT_KEY_NAMES = ['id_ed25519', 'id_ecdsa', 'id_rsa', 'id_dsa'];
 const PRIVATE_KEY_MARKERS = [

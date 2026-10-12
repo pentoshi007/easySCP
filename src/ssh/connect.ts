@@ -1,5 +1,5 @@
 import type { Duplex } from 'node:stream';
-import { Client, type ConnectConfig } from 'ssh2';
+import type { ConnectConfig, Client as SshClient } from 'ssh2';
 import { AppError, CancelledError } from '../core/errors.js';
 import { type Host, hostLabel, requireHost } from '../core/hosts.js';
 import { debugEnabled, debugLog } from '../core/log.js';
@@ -12,6 +12,7 @@ import {
   preferredHostKeyAlgorithms,
   trustHostKey,
 } from './knownHosts.js';
+import { Client } from './lib.js';
 
 export interface ConnectOptions {
   interaction: Interaction;
@@ -22,7 +23,7 @@ export interface ConnectOptions {
 
 export interface Connection {
   readonly host: Host;
-  readonly client: Client;
+  readonly client: SshClient;
   close(): void;
 }
 
@@ -67,7 +68,7 @@ class Watchdog {
   }
 }
 
-function forward(client: Client, host: Host): Promise<Duplex> {
+function forward(client: SshClient, host: Host): Promise<Duplex> {
   return new Promise((resolve, reject) => {
     client.forwardOut('127.0.0.1', 0, host.hostname, host.port, (error, stream) => {
       if (error) {
@@ -106,7 +107,7 @@ function handshake(
   options: ConnectOptions,
   sock: Duplex | undefined,
   via: string | undefined,
-): Promise<Client> {
+): Promise<SshClient> {
   const { interaction, signal } = options;
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
