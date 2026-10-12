@@ -12,6 +12,7 @@ export interface TextOptions {
   hint?: string;
   mask?: string;
   allowEmpty?: boolean;
+  error?: string;
   validate?: (value: string) => string | undefined;
 }
 
@@ -23,7 +24,7 @@ export function TextPrompt({
   options: TextOptions;
 }) {
   const [state, setState] = useState(() => createEditor(options.initial ?? ''));
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState(options.error);
   const { columns } = useWindowSize();
 
   usePaste((text) => {

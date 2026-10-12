@@ -117,6 +117,7 @@ export class Ui {
   }
 
   intro(title: ReactNode): void {
+    if (!this.interactive) return;
     this.print(
       <Box flexDirection="column">
         <Text>
@@ -132,13 +133,23 @@ export class Ui {
     );
   }
 
-  outro(message: ReactNode, tone: Tone = 'success'): void {
+  outro(message: ReactNode, tone: Tone = 'success', hint?: string): void {
     this.print(
-      <Text>
-        <Text color={colors.muted}>{symbols.end}</Text>
-        {'  '}
-        <Text color={toneColor[tone]}>{message}</Text>
-      </Text>,
+      <Box flexDirection="column">
+        <Text>
+          <Text color={colors.muted}>{symbols.end}</Text>
+          {'  '}
+          <Text color={toneColor[tone]}>{message}</Text>
+        </Text>
+        {hint
+          ? hint.split('\n').map((line) => (
+              <Text key={line} color={colors.muted}>
+                {'   '}
+                {line}
+              </Text>
+            ))
+          : null}
+      </Box>,
     );
   }
 
@@ -161,6 +172,10 @@ export class Ui {
   }
 
   note(message: ReactNode, tone: Tone = 'info'): void {
+    if (!this.interactive) {
+      this.print(<Text color={tone === 'info' ? undefined : toneColor[tone]}>{message}</Text>);
+      return;
+    }
     this.print(
       <Line>
         <Text color={toneColor[tone]}>

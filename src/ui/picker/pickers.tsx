@@ -15,10 +15,18 @@ export interface PickOptions {
 }
 
 export function summarizePaths(fs: FileSystem, paths: string[]): string {
-  const shown = paths.slice(0, 3).map((path) => displayPath(fs, path));
-  const rest = paths.length - shown.length;
   const prefix = fs.local ? '' : `${fs.label}:`;
-  return `${prefix}${shown.join(', ')}${rest > 0 ? ` +${rest} more` : ''}`;
+  const [first] = paths;
+  if (!first) return '';
+  if (paths.length === 1) return `${prefix}${displayPath(fs, first)}`;
+  const parent = fs.path.dirname(first);
+  const shared = paths.every((path) => fs.path.dirname(path) === parent);
+  const names = paths
+    .slice(0, 3)
+    .map((path) => (shared ? fs.path.basename(path) : displayPath(fs, path)));
+  const rest = paths.length - names.length;
+  const list = `${names.join(', ')}${rest > 0 ? ` +${rest} more` : ''}`;
+  return shared ? `${list} in ${prefix}${displayPath(fs, parent)}` : `${prefix}${list}`;
 }
 
 export function pickFiles(ui: Ui, options: PickOptions): Promise<string[]> {
