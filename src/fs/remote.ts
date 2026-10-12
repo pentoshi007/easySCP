@@ -54,21 +54,37 @@ function packetLimit(sftp: SFTPWrapper): number {
   return Math.max(SAFE_PACKET, Math.min(read, write, 255 * 1024));
 }
 
-function call<T>(target: string, run: (done: (error?: Error | null, value?: T) => void) => void) {
+type Run<T> = (done: (error?: Error | null, value?: T) => void) => void;
+
+function connectionLost(session: Session, target: string): Error {
+  return Object.assign(new Error(`Connection to ${session.host.name} was lost: ${target}`), {
+    code: 'ECONNRESET',
+  });
+}
+
+function call<T>(session: Session, target: string, run: Run<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    if (session.closed) {
+      reject(connectionLost(session, target));
+      return;
+    }
     run((error, value) => (error ? reject(sftpError(error, target)) : resolve(value as T)));
   });
 }
 
 class RemoteReader implements Reader {
+  private readonly sftp: SFTPWrapper;
+
   constructor(
-    private readonly sftp: SFTPWrapper,
+    private readonly session: Session,
     private readonly handle: Buffer,
     private readonly file: string,
-  ) {}
+  ) {
+    this.sftp = session.sftp;
+  }
 
   read(buffer: Buffer, offset: number, length: number, position: number): Promise<number> {
-    return call<number>(this.file, (done) =>
+    return call<number>(this.session, this.file, (done) =>
       this.sftp.read(this.handle, buffer, offset, length, position, (error, bytesRead) =>
         done(error, bytesRead),
       ),
@@ -76,19 +92,23 @@ class RemoteReader implements Reader {
   }
 
   close(): Promise<void> {
-    return call<void>(this.file, (done) => this.sftp.close(this.handle, done));
+    return call<void>(this.session, this.file, (done) => this.sftp.close(this.handle, done));
   }
 }
 
 class RemoteWriter implements Writer {
+  private readonly sftp: SFTPWrapper;
+
   constructor(
-    private readonly sftp: SFTPWrapper,
+    private readonly session: Session,
     private readonly handle: Buffer,
     private readonly file: string,
-  ) {}
+  ) {
+    this.sftp = session.sftp;
+  }
 
   write(buffer: Buffer, offset: number, length: number, position: number): Promise<void> {
-    return call<void>(this.file, (done) =>
+    return call<void>(this.session, this.file, (done) =>
       this.sftp.write(this.handle, buffer, offset, length, position, done),
     );
   }
@@ -101,13 +121,13 @@ class RemoteWriter implements Writer {
       attrs.atime = attrs.mtime;
     }
     if (Object.keys(attrs).length === 0) return;
-    await call<void>(this.file, (done) => this.sftp.fsetstat(this.handle, attrs, done)).catch(
-      () => undefined,
-    );
+    await call<void>(this.session, this.file, (done) =>
+      this.sftp.fsetstat(this.handle, attrs, done),
+    ).catch(() => undefined);
   }
 
   close(): Promise<void> {
-    return call<void>(this.file, (done) => this.sftp.close(this.handle, done));
+    return call<void>(this.session, this.file, (done) => this.sftp.close(this.handle, done));
   }
 }
 
@@ -128,6 +148,10 @@ export class RemoteFileSystem implements FileSystem {
     this.parallelChunks = Math.max(8, Math.floor(IN_FLIGHT_BYTES / this.chunkSize));
   }
 
+  get closed(): boolean {
+    return this.session.closed;
+  }
+
   async roots(): Promise<string[]> {
     return ['/'];
   }
@@ -136,13 +160,17 @@ export class RemoteFileSystem implements FileSystem {
     const name = path.posix.basename(target) || target;
     let attrs: SftpAttributes;
     try {
-      attrs = await call<SftpAttributes>(target, (done) => this.sftp.lstat(target, done));
+      attrs = await call<SftpAttributes>(this.session, target, (done) =>
+        this.sftp.lstat(target, done),
+      );
     } catch {
       return undefined;
     }
     if ((attrs.mode & S_IFMT) !== S_IFLNK) return toEntry(name, target, attrs, false);
     try {
-      const resolved = await call<SftpAttributes>(target, (done) => this.sftp.stat(target, done));
+      const resolved = await call<SftpAttributes>(this.session, target, (done) =>
+        this.sftp.stat(target, done),
+      );
       return toEntry(name, target, resolved, true);
     } catch {
       return { ...toEntry(name, target, attrs, true), kind: 'other' };
@@ -150,8 +178,10 @@ export class RemoteFileSystem implements FileSystem {
   }
 
   async list(dir: string): Promise<Entry[]> {
-    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(dir, (done) =>
-      this.sftp.readdir(dir, done),
+    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(
+      this.session,
+      dir,
+      (done) => this.sftp.readdir(dir, done),
     );
     return mapLimit(items, 32, async ({ filename, attrs }) => {
       const target = path.posix.join(dir, filename);
@@ -162,8 +192,10 @@ export class RemoteFileSystem implements FileSystem {
   }
 
   async scan(dir: string): Promise<ScanEntry[]> {
-    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(dir, (done) =>
-      this.sftp.readdir(dir, done),
+    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(
+      this.session,
+      dir,
+      (done) => this.sftp.readdir(dir, done),
     );
     return items.map(({ filename, attrs }) => ({
       name: filename,
@@ -172,44 +204,46 @@ export class RemoteFileSystem implements FileSystem {
   }
 
   mkdir(dir: string): Promise<void> {
-    return call<void>(dir, (done) => this.sftp.mkdir(dir, done));
+    return call<void>(this.session, dir, (done) => this.sftp.mkdir(dir, done));
   }
 
   async rename(from: string, to: string): Promise<void> {
     try {
-      await call<void>(to, (done) => this.sftp.ext_openssh_rename(from, to, done));
+      await call<void>(this.session, to, (done) => this.sftp.ext_openssh_rename(from, to, done));
       return;
     } catch (error) {
       if (!/does not support/i.test((error as Error).message)) throw error;
     }
     try {
-      await call<void>(to, (done) => this.sftp.rename(from, to, done));
+      await call<void>(this.session, to, (done) => this.sftp.rename(from, to, done));
     } catch (error) {
       const existing = await this.stat(to);
       if (!existing || existing.kind === 'dir') throw error;
       await this.removeFile(to);
-      await call<void>(to, (done) => this.sftp.rename(from, to, done));
+      await call<void>(this.session, to, (done) => this.sftp.rename(from, to, done));
     }
   }
 
   removeFile(target: string): Promise<void> {
-    return call<void>(target, (done) => this.sftp.unlink(target, done));
+    return call<void>(this.session, target, (done) => this.sftp.unlink(target, done));
   }
 
   removeDir(target: string): Promise<void> {
-    return call<void>(target, (done) => this.sftp.rmdir(target, done));
+    return call<void>(this.session, target, (done) => this.sftp.rmdir(target, done));
   }
 
   async openRead(file: string): Promise<Reader> {
-    const handle = await call<Buffer>(file, (done) => this.sftp.open(file, 'r', done));
-    return new RemoteReader(this.sftp, handle, file);
+    const handle = await call<Buffer>(this.session, file, (done) =>
+      this.sftp.open(file, 'r', done),
+    );
+    return new RemoteReader(this.session, handle, file);
   }
 
   async openWrite(file: string, append: boolean): Promise<Writer> {
     const flags = append ? 'r+' : 'w';
-    const handle = await call<Buffer>(file, (done) =>
+    const handle = await call<Buffer>(this.session, file, (done) =>
       this.sftp.open(file, flags, { mode: 0o644 }, done),
     );
-    return new RemoteWriter(this.sftp, handle, file);
+    return new RemoteWriter(this.session, handle, file);
   }
 }
