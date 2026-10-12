@@ -2,11 +2,11 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { deleteSecret, getSecret, secretBackend, setSecret } from '../src/core/secrets.js';
-import { useAppHome } from './helpers/tmp.js';
+import { isolateAppHome } from './helpers/tmp.js';
 
 describe('file secret backend', () => {
   it('encrypts, reads back and deletes secrets', async () => {
-    const home = await useAppHome();
+    const home = await isolateAppHome();
     expect((await secretBackend()).name).toBe('file');
 
     await setSecret('host-1', 'password', 'hunter2');

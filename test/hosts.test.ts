@@ -10,7 +10,7 @@ import {
   updateHost,
   validateHostName,
 } from '../src/core/hosts.js';
-import { useAppHome } from './helpers/tmp.js';
+import { isolateAppHome } from './helpers/tmp.js';
 
 describe('parseAddress', () => {
   it.each([
@@ -39,7 +39,7 @@ describe('hostLabel', () => {
 
 describe('host store', () => {
   beforeEach(async () => {
-    await useAppHome();
+    await isolateAppHome();
   });
 
   const draft = {
