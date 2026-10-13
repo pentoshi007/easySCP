@@ -1,3 +1,4 @@
+import { printable } from '../util/format.js';
 import type { Entry, FileSystem } from './types.js';
 
 export function expandInput(fs: FileSystem, input: string): string {
@@ -34,9 +35,9 @@ export function displayPath(fs: FileSystem, target: string): string {
   if (target === home) return '~';
   const prefix = home.endsWith(path.sep) ? home : home + path.sep;
   if (home !== path.sep && target.startsWith(prefix)) {
-    return `~${path.sep}${target.slice(prefix.length)}`;
+    return printable(`~${path.sep}${target.slice(prefix.length)}`);
   }
-  return target;
+  return printable(target);
 }
 
 export function parentDir(fs: FileSystem, target: string): string | undefined {

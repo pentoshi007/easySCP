@@ -1,6 +1,12 @@
 import { Box, Text, useWindowSize } from 'ink';
 import type { TransferProgress } from '../../transfer/run.js';
-import { formatBytes, formatDuration, formatSpeed, truncateMiddle } from '../../util/format.js';
+import {
+  formatBytes,
+  formatDuration,
+  formatSpeed,
+  printable,
+  truncateMiddle,
+} from '../../util/format.js';
 import { colors, symbols } from '../theme.js';
 import { Frame } from './Frame.js';
 import { KeyHints } from './KeyHints.js';
@@ -80,7 +86,9 @@ export function TransferView({ title, progress, cancelling, scanned }: TransferV
       {rows.map((file) => (
         <Box key={file.relative}>
           <Box width={nameWidth} flexShrink={1}>
-            <Text wrap="truncate-end">{truncateMiddle(file.relative, nameWidth - 1)}</Text>
+            <Text wrap="truncate-end">
+              {truncateMiddle(printable(file.relative), nameWidth - 1)}
+            </Text>
           </Box>
           <Box width={10} justifyContent="flex-end">
             <Text color={colors.muted}>{formatBytes(file.size)}</Text>

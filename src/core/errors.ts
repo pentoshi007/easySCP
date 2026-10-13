@@ -1,3 +1,5 @@
+import { printable } from '../util/format.js';
+
 export class AppError extends Error {
   readonly hint: string | undefined;
 
@@ -66,6 +68,11 @@ const ERRNO: Record<string, ErrorReport> = {
 };
 
 export function describeError(error: unknown): ErrorReport {
+  const report = explain(error);
+  return { ...report, message: printable(report.message) };
+}
+
+function explain(error: unknown): ErrorReport {
   if (error instanceof AppError) return { message: error.message, hint: error.hint };
   if (!(error instanceof Error)) return { message: String(error) };
 

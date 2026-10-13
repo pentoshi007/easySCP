@@ -4,6 +4,7 @@ import {
   formatDuration,
   formatMode,
   formatRelative,
+  printable,
   truncateMiddle,
 } from '../src/util/format.js';
 
@@ -54,5 +55,14 @@ describe('truncateMiddle', () => {
     expect(result).toHaveLength(16);
     expect(result).toContain('…');
     expect(result.endsWith('file.txt')).toBe(true);
+  });
+});
+
+describe('printable', () => {
+  it('neutralises terminal control characters in names', () => {
+    const escape = String.fromCharCode(27);
+    expect(printable(`evil${escape}[2Jname\u0007`)).toBe('evil?[2Jname?');
+    expect(printable('café ünïcode.txt')).toBe('café ünïcode.txt');
+    expect(printable('a\u009bb')).toBe('a?b');
   });
 });

@@ -66,6 +66,15 @@ export function plural(count: number, singular: string, pluralForm = `${singular
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
+export function printable(text: string): string {
+  let out = '';
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    out += code < 32 || (code >= 127 && code < 160) ? '?' : char;
+  }
+  return out;
+}
+
 export function truncateMiddle(text: string, max: number): string {
   if (max <= 0) return '';
   if (text.length <= max) return text;

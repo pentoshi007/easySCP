@@ -1,4 +1,5 @@
 import { Text } from 'ink';
+import { printable } from '../../util/format.js';
 import { colors } from '../theme.js';
 
 interface HighlightProps {
@@ -29,7 +30,8 @@ function segments(text: string, positions: readonly number[]): Segment[] {
   return parts;
 }
 
-export function Highlight({ text, positions, color, bold, dim }: HighlightProps) {
+export function Highlight({ text: raw, positions, color, bold, dim }: HighlightProps) {
+  const text = printable(raw);
   return (
     <Text color={color} bold={bold} dimColor={dim}>
       {positions.length === 0

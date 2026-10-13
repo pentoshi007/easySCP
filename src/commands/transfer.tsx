@@ -30,7 +30,7 @@ import type { Shortcut } from '../ui/picker/model.js';
 import { pickDirectory, pickFiles } from '../ui/picker/pickers.js';
 import { colors, symbols } from '../ui/theme.js';
 import type { Ui } from '../ui/ui.js';
-import { plural } from '../util/format.js';
+import { plural, printable } from '../util/format.js';
 import { addHost } from './add.js';
 import { done, fail, type Outcome, warn } from './outcome.js';
 
@@ -225,8 +225,8 @@ function report(ui: Ui, result: TransferResult, verb: string, where: string): Ou
           {result.error?.hint ? <Text color={colors.muted}>{result.error.hint}</Text> : null}
           {shown.map((failure) => (
             <Text key={failure.path} wrap="truncate-middle">
-              <Text color={colors.danger}>{symbols.error}</Text> {failure.path}{' '}
-              <Text color={colors.muted}>{failure.message}</Text>
+              <Text color={colors.danger}>{symbols.error}</Text> {printable(failure.path)}{' '}
+              <Text color={colors.muted}>{printable(failure.message)}</Text>
             </Text>
           ))}
           {result.failed.length > shown.length ? (

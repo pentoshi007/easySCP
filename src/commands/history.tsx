@@ -7,7 +7,7 @@ import { displayPath } from '../fs/ops.js';
 import { clearHistory, type HistoryEntry, listHistory } from '../transfer/history.js';
 import type { Choice } from '../ui/prompts/SelectPrompt.js';
 import { colors, symbols } from '../ui/theme.js';
-import { formatBytes, formatRelative, plural, truncateMiddle } from '../util/format.js';
+import { formatBytes, formatRelative, plural, printable, truncateMiddle } from '../util/format.js';
 import { done, type Outcome, warn } from './outcome.js';
 import { transferFlow } from './transfer.js';
 
@@ -27,7 +27,7 @@ export function describeEntry(entry: HistoryEntry): { label: string; hint: strin
   const arrow = entry.direction === 'upload' ? symbols.arrowUp : symbols.arrowDown;
   const [first] = entry.sources;
   const what = first
-    ? `${baseName(first)}${entry.sources.length > 1 ? ` +${entry.sources.length - 1}` : ''}`
+    ? `${printable(baseName(first))}${entry.sources.length > 1 ? ` +${entry.sources.length - 1}` : ''}`
     : 'nothing';
   const destination =
     entry.direction === 'upload'

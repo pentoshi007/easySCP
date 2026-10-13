@@ -24,7 +24,7 @@ import { SelectPrompt } from '../ui/prompts/SelectPrompt.js';
 import { TextPrompt } from '../ui/prompts/TextPrompt.js';
 import { colors, symbols, type Tone, toneColor, toneSymbol } from '../ui/theme.js';
 import type { PromptControls } from '../ui/ui.js';
-import { formatBytes, formatDate, formatMode } from '../util/format.js';
+import { formatBytes, formatDate, formatMode, printable } from '../util/format.js';
 import { createFolder, deleteEntries, renameEntry } from './actions.js';
 import { describeItems, invalidName, pickTargets } from './model.js';
 import { PaneView } from './PaneView.js';
@@ -152,7 +152,7 @@ function EntryDetails({ entry }: { entry: Entry }) {
   ].filter(Boolean);
   return (
     <Text color={colors.muted} wrap="truncate-middle">
-      <Text color={entry.kind === 'dir' ? colors.dir : undefined}>{entry.name}</Text>
+      <Text color={entry.kind === 'dir' ? colors.dir : undefined}>{printable(entry.name)}</Text>
       {parts.length > 0 ? ` ${symbols.dot} ${parts.join(` ${symbols.dot} `)}` : ''}
     </Text>
   );
@@ -412,12 +412,13 @@ export function Explorer({
   async function rename(target: Pane) {
     const entry = target.current;
     if (!entry) return;
-    const name = await askName(`Rename ${entry.name}`, target.fs, entry.name, async (value) => {
+    const shown = printable(entry.name);
+    const name = await askName(`Rename ${shown}`, target.fs, entry.name, async (value) => {
       await renameEntry(target.fs, entry, value);
     });
     if (!name || name === entry.name) return;
     target.refresh(name);
-    setStatus({ tone: 'success', message: `Renamed ${entry.name} to ${name}` });
+    setStatus({ tone: 'success', message: `Renamed ${shown} to ${printable(name)}` });
   }
 
   async function goTo(target: Pane) {

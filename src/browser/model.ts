@@ -1,7 +1,7 @@
 import { isPartName } from '../fs/names.js';
 import { isHidden } from '../fs/ops.js';
 import type { Entry, FileSystem } from '../fs/types.js';
-import { formatBytes, plural } from '../util/format.js';
+import { formatBytes, plural, printable } from '../util/format.js';
 import { fuzzyMatch } from '../util/fuzzy.js';
 
 export interface PaneRow {
@@ -50,7 +50,7 @@ export function pickTargets(
 export function describeItems(entries: Entry[]): string {
   const [first] = entries;
   if (entries.length === 1 && first) {
-    return `${first.name}${first.kind === 'dir' ? '/' : ''}`;
+    return `${printable(first.name)}${first.kind === 'dir' ? '/' : ''}`;
   }
   const dirs = entries.filter((entry) => entry.kind === 'dir').length;
   if (dirs === 0) return plural(entries.length, 'file');

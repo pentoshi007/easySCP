@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { displayPath } from '../../fs/ops.js';
 import type { FileSystem } from '../../fs/types.js';
+import { printable } from '../../util/format.js';
 import type { Ui } from '../ui.js';
 import { Browser } from './Browser.js';
 import type { Shortcut } from './model.js';
@@ -23,7 +24,7 @@ export function summarizePaths(fs: FileSystem, paths: string[]): string {
   const shared = paths.every((path) => fs.path.dirname(path) === parent);
   const names = paths
     .slice(0, 3)
-    .map((path) => (shared ? fs.path.basename(path) : displayPath(fs, path)));
+    .map((path) => (shared ? printable(fs.path.basename(path)) : displayPath(fs, path)));
   const rest = paths.length - names.length;
   const list = `${names.join(', ')}${rest > 0 ? ` +${rest} more` : ''}`;
   return shared ? `${list} in ${prefix}${displayPath(fs, parent)}` : `${prefix}${list}`;
