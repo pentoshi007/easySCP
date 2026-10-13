@@ -215,7 +215,7 @@ describe('binary updates', () => {
     const dir = await tempDir();
     const executable = path.join(dir, 'easyscp');
     const alias = path.join(dir, 'escp');
-    expect(commandAliases(executable)).toEqual([alias]);
+    expect(commandAliases(executable, 'linux')).toEqual([alias]);
     expect(commandAliases(path.join(dir, 'ESCP.EXE'), 'win32')).toEqual([
       path.join(dir, 'easyscp.exe'),
     ]);
@@ -225,7 +225,7 @@ describe('binary updates', () => {
     await writeFile(next, 'new');
     await replaceExecutable(executable, next, 'linux');
     expect(await readFile(alias, 'utf8')).toBe('new');
-    await removeRetiredExecutable(executable);
+    await removeRetiredExecutable(executable, 'linux');
     await expect(stat(retiredPath(alias))).rejects.toThrow();
   });
 });

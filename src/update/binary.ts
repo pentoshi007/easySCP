@@ -172,7 +172,10 @@ export async function replaceExecutable(
   await relinkAliases(executable, platform).catch(() => undefined);
 }
 
-export async function removeRetiredExecutable(executable: string): Promise<void> {
-  const files = [executable, ...commandAliases(executable)].map(retiredPath);
+export async function removeRetiredExecutable(
+  executable: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  const files = [executable, ...commandAliases(executable, platform)].map(retiredPath);
   await Promise.all(files.map((file) => rm(file, { force: true }).catch(() => undefined)));
 }
