@@ -1,13 +1,15 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { link, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../src/app/main.js';
 import { updateState } from '../src/core/state.js';
 import {
+  commandAliases,
   downloadBinary,
   parseChecksums,
+  removeRetiredExecutable,
   replaceExecutable,
   reportedVersion,
   retiredPath,
@@ -207,6 +209,24 @@ describe('binary updates', () => {
     expect(await readFile(executable, 'utf8')).toBe('new');
     await expect(stat(next)).rejects.toThrow();
     if (platform === 'win32') expect(await readFile(retiredPath(executable), 'utf8')).toBe('old');
+  });
+
+  it('keeps a hard-linked alias pointing at the new binary', async () => {
+    const dir = await tempDir();
+    const executable = path.join(dir, 'easyscp');
+    const alias = path.join(dir, 'escp');
+    expect(commandAliases(executable)).toEqual([alias]);
+    expect(commandAliases(path.join(dir, 'ESCP.EXE'), 'win32')).toEqual([
+      path.join(dir, 'easyscp.exe'),
+    ]);
+    await writeFile(executable, 'old');
+    await link(executable, alias);
+    const next = stagingPath(executable, 'linux');
+    await writeFile(next, 'new');
+    await replaceExecutable(executable, next, 'linux');
+    expect(await readFile(alias, 'utf8')).toBe('new');
+    await removeRetiredExecutable(executable);
+    await expect(stat(retiredPath(alias))).rejects.toThrow();
   });
 });
 

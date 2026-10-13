@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { chmod, rename, rm } from 'node:fs/promises';
+import { chmod, copyFile, link, lstat, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -125,26 +125,53 @@ export function retiredPath(executable: string): string {
   return `${executable}.old`;
 }
 
+const COMMAND_NAMES = ['easyscp', 'escp'];
+
+export function commandAliases(
+  executable: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const extension = platform === 'win32' ? '.exe' : '';
+  const same = (a: string, b: string) =>
+    platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  return COMMAND_NAMES.map((name) =>
+    path.join(path.dirname(executable), `${name}${extension}`),
+  ).filter((file) => !same(file, executable));
+}
+
+async function relinkAliases(executable: string, platform: NodeJS.Platform): Promise<void> {
+  for (const alias of commandAliases(executable, platform)) {
+    const info = await lstat(alias).catch(() => undefined);
+    if (!info || info.isSymbolicLink()) continue;
+    const retired = retiredPath(alias);
+    await rm(retired, { force: true });
+    await rename(alias, retired);
+    await link(executable, alias).catch(() => copyFile(executable, alias));
+  }
+}
+
 export async function replaceExecutable(
   executable: string,
   next: string,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
-  if (platform !== 'win32') {
+  if (platform === 'win32') {
+    const retired = retiredPath(executable);
+    await rm(retired, { force: true });
+    await rename(executable, retired);
+    try {
+      await rename(next, executable);
+    } catch (error) {
+      await rename(retired, executable);
+      throw error;
+    }
+  } else {
     await rename(next, executable);
-    return;
   }
-  const retired = retiredPath(executable);
-  await rm(retired, { force: true });
-  await rename(executable, retired);
-  try {
-    await rename(next, executable);
-  } catch (error) {
-    await rename(retired, executable);
-    throw error;
-  }
+  await relinkAliases(executable, platform).catch(() => undefined);
 }
 
 export async function removeRetiredExecutable(executable: string): Promise<void> {
-  await rm(retiredPath(executable), { force: true }).catch(() => undefined);
+  const files = [executable, ...commandAliases(executable)].map(retiredPath);
+  await Promise.all(files.map((file) => rm(file, { force: true }).catch(() => undefined)));
 }
