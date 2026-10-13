@@ -72,7 +72,15 @@ const plain: typeof fancy = {
 
 export const symbols = unicode ? fancy : plain;
 
-export const colors = {
+export function colorsDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.NO_COLOR) && env.FORCE_COLOR === undefined;
+}
+
+export function streamColors(stream: NodeJS.WriteStream): boolean {
+  return !colorsDisabled() && (Boolean(stream.isTTY) || Boolean(process.env.FORCE_COLOR));
+}
+
+const palette = {
   accent: 'cyan',
   success: 'green',
   warning: 'yellow',
@@ -81,7 +89,11 @@ export const colors = {
   dir: 'blue',
   link: 'magenta',
   match: 'yellow',
-} as const;
+};
+
+export const colors: Record<keyof typeof palette, string> = colorsDisabled()
+  ? (Object.fromEntries(Object.keys(palette).map((name) => [name, ''])) as typeof palette)
+  : palette;
 
 export type Tone = 'success' | 'warning' | 'danger' | 'info';
 
