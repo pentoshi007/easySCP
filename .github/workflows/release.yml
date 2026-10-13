@@ -51,6 +51,34 @@ jobs:
             echo "publish=$publish"
             echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
+      - name: Check publishing credentials
+        env:
+          PUBLISH: ${{ steps.version.outputs.publish }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$RUNNER_TEMP/.npmrc"
+            echo "npm publishes as $(npm whoami --userconfig "$RUNNER_TEMP/.npmrc")"
+            rm -f "$RUNNER_TEMP/.npmrc"
+          elif [ "$PUBLISH" = true ]; then
+            echo "::error::Add the NPM_TOKEN secret before releasing"
+            exit 1
+          else
+            echo "::warning::NPM_TOKEN is not set"
+          fi
+          if [ -n "$TAP_DEPLOY_KEY" ]; then
+            key="$RUNNER_TEMP/tap_key"
+            printf '%s\n' "$TAP_DEPLOY_KEY" > "$key"
+            chmod 600 "$key"
+            echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
+            GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts" \
+              git ls-remote git@github.com:pentoshi007/homebrew-tap.git HEAD
+            rm -f "$key"
+            echo "The Homebrew tap is reachable"
+          else
+            echo "::warning::HOMEBREW_TAP_DEPLOY_KEY is not set, so the tap won't be updated"
+          fi
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run lint
@@ -200,7 +228,7 @@ jobs:
     env:
       VERSION: ${{ needs.check.outputs.version }}
       PRERELEASE: ${{ needs.check.outputs.prerelease }}
-      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -236,9 +264,14 @@ jobs:
             gh release create "v$VERSION" "${assets[@]}" "${flags[@]}"
           fi
       - name: Update the Homebrew tap
-        if: env.TAP_TOKEN != '' && needs.check.outputs.prerelease != 'true'
+        if: env.TAP_DEPLOY_KEY != '' && needs.check.outputs.prerelease != 'true'
         run: |
-          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/pentoshi007/homebrew-tap.git" tap
+          key="$RUNNER_TEMP/tap_key"
+          printf '%s\n' "$TAP_DEPLOY_KEY" > "$key"
+          chmod 600 "$key"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          git clone --depth 1 git@github.com:pentoshi007/homebrew-tap.git tap
           mkdir -p tap/Formula
           cp release/easyscp.rb tap/Formula/easyscp.rb
           cd tap
@@ -251,3 +284,4 @@ jobs:
             git commit -m "easyscp $VERSION"
             git push
           fi
+          rm -f "$key"
