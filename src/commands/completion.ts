@@ -7,7 +7,7 @@ export function isShell(value: string | undefined): value is Shell {
   return SHELLS.includes(value as Shell);
 }
 
-const HOST_COMMANDS = ['send', 'receive', 'edit', 'remove', 'test'];
+const HOST_COMMANDS = ['send', 'receive', 'browse', 'edit', 'remove', 'test'];
 
 function commandWords(): string[] {
   return COMMANDS.flatMap((command) => [command.name, ...command.aliases]);

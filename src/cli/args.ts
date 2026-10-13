@@ -5,6 +5,7 @@ import type { ConflictPolicy } from '../transfer/run.js';
 export type CommandName =
   | 'send'
   | 'receive'
+  | 'browse'
   | 'add'
   | 'edit'
   | 'remove'
@@ -58,6 +59,14 @@ export const COMMANDS: CommandInfo[] = [
     summary: 'Download files or folders from a machine',
     group: 'Transfer',
     flags: ['to', ...POLICY_FLAGS],
+  },
+  {
+    name: 'browse',
+    aliases: ['open', 'files'],
+    args: '[host]',
+    summary: 'Side-by-side file browser for this computer and a machine',
+    group: 'Transfer',
+    flags: [],
   },
   {
     name: 'add',

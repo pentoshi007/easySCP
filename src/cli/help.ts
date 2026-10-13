@@ -40,6 +40,7 @@ const EXAMPLES: Record<string, string[]> = {
     'easyscp get prod                    browse prod and pick what to download',
     "easyscp get prod '/var/log/*.log' -t ./logs",
   ],
+  browse: ['easyscp browse prod                 copy, rename and delete on both sides'],
   add: ['easyscp add', 'easyscp add deploy@203.0.113.7:2222'],
 };
 

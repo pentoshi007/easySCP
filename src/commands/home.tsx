@@ -8,6 +8,7 @@ import type { Choice } from '../ui/prompts/SelectPrompt.js';
 import { colors, toneColor } from '../ui/theme.js';
 import { plural } from '../util/format.js';
 import { addHost } from './add.js';
+import { browseCommand, browseHost } from './browse.js';
 import { editHostFields } from './edit.js';
 import { describeEntry, historyCommand, repeatTransfer } from './history.js';
 import { importCandidates, importCommand } from './import.js';
@@ -54,6 +55,7 @@ export async function hostMenu(ctx: Context, initial: Host): Promise<Outcome | u
       choices: [
         { value: 'send', label: `Send files to ${host.name}` },
         { value: 'receive', label: `Receive files from ${host.name}` },
+        { value: 'browse', label: 'Browse files', hint: 'side by side with this computer' },
         { value: 'test', label: 'Test connection' },
         { value: 'edit', label: 'Edit details' },
         { value: 'remove', label: 'Remove', color: colors.danger },
@@ -67,6 +69,8 @@ export async function hostMenu(ctx: Context, initial: Host): Promise<Outcome | u
           return transferFlow(ctx, { direction: 'upload', host });
         case 'receive':
           return transferFlow(ctx, { direction: 'download', host });
+        case 'browse':
+          return browseHost(ctx, host);
         case 'test':
           await probe(ctx, host);
           return undefined;
@@ -157,6 +161,7 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
     choices.push(
       { value: 'send', label: 'Send files', hint: 'upload to a machine' },
       { value: 'receive', label: 'Receive files', hint: 'download from a machine' },
+      { value: 'browse', label: 'Browse files', hint: 'copy, rename and delete side by side' },
     );
     if (history.length > 0) {
       choices.push({
@@ -191,6 +196,8 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
           return transferFlow(ctx, { direction: 'upload' });
         case 'receive':
           return transferFlow(ctx, { direction: 'download' });
+        case 'browse':
+          return browseCommand(ctx);
         case 'history':
           return historyCommand(ctx);
         default:

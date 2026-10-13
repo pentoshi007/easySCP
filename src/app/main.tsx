@@ -6,6 +6,7 @@ import {
 } from '../cli/args.js';
 import { renderHelp } from '../cli/help.js';
 import { addCommand } from '../commands/add.js';
+import { browseCommand } from '../commands/browse.js';
 import { completionScript, isShell } from '../commands/completion.js';
 import { editCommand } from '../commands/edit.js';
 import { historyCommand } from '../commands/history.js';
@@ -24,6 +25,7 @@ import { type Context, createContext } from './context.js';
 const TITLES: Record<CommandName, string> = {
   send: 'send files',
   receive: 'receive files',
+  browse: 'browse files',
   add: 'add a machine',
   edit: 'edit a machine',
   remove: 'remove machines',
@@ -40,6 +42,7 @@ const HANDLERS: Record<
 > = {
   send: (ctx) => transferCommand(ctx, 'upload'),
   receive: (ctx) => transferCommand(ctx, 'download'),
+  browse: browseCommand,
   add: addCommand,
   edit: editCommand,
   remove: removeCommand,
