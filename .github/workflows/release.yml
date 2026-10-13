@@ -1,0 +1,253 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SEA_NODE_VERSION: 26.11.1
+  HOMEBREW_NO_AUTO_UPDATE: 1
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_ENV_HINTS: 1
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - id: version
+        name: Read the version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          publish=false
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json version $version"
+              exit 1
+            fi
+            publish=true
+          fi
+          case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          {
+            echo "version=$version"
+            echo "publish=$publish"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  binary:
+    name: Binary · ${{ matrix.target }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-latest }
+          - { target: darwin-x64, os: macos-15-intel }
+          - { target: linux-x64, os: ubuntu-24.04 }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+          - { target: windows-x64, os: windows-latest }
+          - { target: windows-arm64, os: windows-11-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.SEA_NODE_VERSION }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build:binary
+      - name: Test the binary
+        shell: bash
+        run: |
+          binary="release/easyscp-${{ matrix.target }}"
+          if [ "$RUNNER_OS" = Windows ]; then binary="$binary.exe"; fi
+          EASYSCP_BINARY="$binary" npx vitest run test/binary.test.ts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.target }}
+          path: release/*.gz
+          if-no-files-found: error
+
+  assemble:
+    name: Assemble
+    needs: [check, binary]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: release
+      - name: Write checksums, installers and the Homebrew formula
+        run: |
+          cp scripts/install.sh scripts/install.ps1 release/
+          (cd release && sha256sum easyscp-*.gz > SHA256SUMS && cat SHA256SUMS)
+          node scripts/formula.mjs "$VERSION" release/SHA256SUMS > release/easyscp.rb
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: release/
+          if-no-files-found: error
+
+  installer:
+    name: Installer · ${{ matrix.os }}
+    needs: assemble
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-24.04, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+    env:
+      EASYSCP_DOWNLOAD_BASE: http://127.0.0.1:8765
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+      - name: Install with install.sh
+        if: runner.os != 'Windows'
+        run: |
+          (cd release && python3 -m http.server 8765 --bind 127.0.0.1 > /dev/null 2>&1 &)
+          sleep 2
+          curl -fsSL "$EASYSCP_DOWNLOAD_BASE/install.sh" | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          easyscp --version
+          escp list --json
+          if [ "$RUNNER_OS" = macOS ]; then login=-l; else login=; fi
+          bash $login -ic 'command -v escp && complete -p easyscp'
+      - name: Install with install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Start-Process python -ArgumentList '-m', 'http.server', '8765', '--bind', '127.0.0.1' -WorkingDirectory release -WindowStyle Hidden
+          Start-Sleep -Seconds 3
+          Invoke-RestMethod "$env:EASYSCP_DOWNLOAD_BASE/install.ps1" | Invoke-Expression
+          easyscp --version
+          escp list --json
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($userPath -notlike "*Programs\easyscp*") { throw 'easyscp was not added to the user PATH' }
+          pwsh -NoLogo -Command "(TabExpansion2 -inputScript 'easyscp hist' -cursorColumn 12).CompletionMatches.CompletionText" | Select-String -SimpleMatch history
+
+  homebrew:
+    name: Homebrew · ${{ matrix.os }}
+    needs: [check, assemble]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-24.04]
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+      - name: Install and test the formula
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          brew tap-new --no-git local/easyscp
+          node scripts/formula.mjs "$VERSION" release/SHA256SUMS "file://$PWD/release" \
+            > "$(brew --repository local/easyscp)/Formula/easyscp.rb"
+          brew install local/easyscp/easyscp
+          brew test local/easyscp/easyscp
+          easyscp --version
+          escp --help > /dev/null
+          test -f "$(brew --prefix)/share/zsh/site-functions/_easyscp"
+
+  publish:
+    name: Publish
+    needs: [check, assemble, installer, homebrew]
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+      PRERELEASE: ${{ needs.check.outputs.prerelease }}
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: release
+      - run: npm ci --ignore-scripts
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if npm view "easyscp@$VERSION" version > /dev/null 2>&1; then
+            echo "easyscp $VERSION is already on npm"
+          elif [ "$PRERELEASE" = true ]; then
+            npm publish --provenance --access public --tag next
+          else
+            npm publish --provenance --access public
+          fi
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=(release/easyscp-*.gz release/SHA256SUMS release/install.sh release/install.ps1)
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release upload "v$VERSION" "${assets[@]}" --clobber
+          else
+            flags=(--title "v$VERSION" --generate-notes --verify-tag)
+            if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+            gh release create "v$VERSION" "${assets[@]}" "${flags[@]}"
+          fi
+      - name: Update the Homebrew tap
+        if: env.TAP_TOKEN != '' && needs.check.outputs.prerelease != 'true'
+        run: |
+          git clone --depth 1 "https://x-access-token:$TAP_TOKEN@github.com/pentoshi007/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp release/easyscp.rb tap/Formula/easyscp.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/easyscp.rb
+          if git diff --cached --quiet; then
+            echo "The formula is already up to date"
+          else
+            git commit -m "easyscp $VERSION"
+            git push
+          fi
