@@ -3,7 +3,14 @@ import { appFile } from '../core/paths.js';
 import { JsonStore } from '../core/store.js';
 import type { TransferStatus } from './run.js';
 
-export type Direction = 'upload' | 'download';
+export type Direction = 'upload' | 'download' | 'copy';
+
+export interface HistoryTarget {
+  hostId: string;
+  hostName: string;
+  destination: string;
+  status: TransferStatus;
+}
 
 export interface HistoryEntry {
   id: string;
@@ -18,6 +25,7 @@ export interface HistoryEntry {
   durationMs: number;
   status: TransferStatus;
   error?: string;
+  targets?: HistoryTarget[];
 }
 
 interface HistoryFile {
@@ -27,17 +35,34 @@ interface HistoryFile {
 
 const MAX_ENTRIES = 200;
 
+const DIRECTIONS = new Set<unknown>(['upload', 'download', 'copy']);
+
+function isTarget(value: unknown): value is HistoryTarget {
+  const target = value as HistoryTarget;
+  return (
+    !!target &&
+    typeof target.hostId === 'string' &&
+    typeof target.hostName === 'string' &&
+    typeof target.destination === 'string'
+  );
+}
+
 function isEntry(value: unknown): value is HistoryEntry {
   const entry = value as HistoryEntry;
   return (
     !!entry &&
     typeof entry.id === 'string' &&
     typeof entry.at === 'number' &&
-    (entry.direction === 'upload' || entry.direction === 'download') &&
+    DIRECTIONS.has(entry.direction) &&
     typeof entry.hostId === 'string' &&
     Array.isArray(entry.sources) &&
-    typeof entry.destination === 'string'
+    typeof entry.destination === 'string' &&
+    (entry.direction !== 'copy' || (Array.isArray(entry.targets) && entry.targets.every(isTarget)))
   );
+}
+
+function sameList<T>(a: T[], b: T[], same: (x: T, y: T) => boolean): boolean {
+  return a.length === b.length && a.every((item, index) => same(item, b[index] as T));
 }
 
 const store = new JsonStore<HistoryFile>({
@@ -58,8 +83,12 @@ function sameTransfer(a: Omit<HistoryEntry, 'id' | 'at'>, b: HistoryEntry): bool
     a.direction === b.direction &&
     a.hostId === b.hostId &&
     a.destination === b.destination &&
-    a.sources.length === b.sources.length &&
-    a.sources.every((source, index) => source === b.sources[index])
+    sameList(a.sources, b.sources, (x, y) => x === y) &&
+    sameList(
+      a.targets ?? [],
+      b.targets ?? [],
+      (x, y) => x.hostId === y.hostId && x.destination === y.destination,
+    )
   );
 }
 
@@ -78,7 +107,12 @@ export async function clearHistory(): Promise<void> {
 
 export async function forgetHostHistory(hostId: string): Promise<void> {
   await store.update((file) => {
-    file.entries = file.entries.filter((entry) => entry.hostId !== hostId);
+    file.entries = file.entries.flatMap((entry) => {
+      if (entry.hostId === hostId) return [];
+      if (!entry.targets) return [entry];
+      const targets = entry.targets.filter((target) => target.hostId !== hostId);
+      return targets.length > 0 ? [{ ...entry, targets }] : [];
+    });
     return file;
   });
 }

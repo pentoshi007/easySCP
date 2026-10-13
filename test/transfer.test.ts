@@ -9,7 +9,7 @@ import { partName } from '../src/fs/names.js';
 import { RemoteFileSystem } from '../src/fs/remote.js';
 import type { FileSystem, Writer } from '../src/fs/types.js';
 import { Session } from '../src/ssh/session.js';
-import { listHistory, recordTransfer } from '../src/transfer/history.js';
+import { forgetHostHistory, listHistory, recordTransfer } from '../src/transfer/history.js';
 import { SpeedMeter } from '../src/transfer/meter.js';
 import { planTransfer, type TransferSpec } from '../src/transfer/plan.js';
 import { type RunOptions, runTransfer, type TransferProgress } from '../src/transfer/run.js';
@@ -376,6 +376,33 @@ describe('meter and history', () => {
       ['/second', 'done'],
     ]);
     expect(entries.filter((entry) => entry.destination === '/first')).toHaveLength(1);
+  });
+
+  it('keeps copies per set of machines and forgets removed ones', async () => {
+    const target = (hostId: string) => ({
+      hostId,
+      hostName: hostId,
+      destination: '/srv',
+      status: 'done' as const,
+    });
+    const copy = {
+      direction: 'copy' as const,
+      hostId: 'src',
+      hostName: 'src',
+      sources: ['/data'],
+      destination: '',
+      files: 1,
+      bytes: 1,
+      durationMs: 1,
+      status: 'done' as const,
+    };
+    await recordTransfer({ ...copy, targets: [target('b'), target('c')] });
+    await recordTransfer({ ...copy, targets: [target('b')] });
+    await recordTransfer({ ...copy, targets: [target('b'), target('c')] });
+    const copies = () => listHistory().then((all) => all.filter((e) => e.direction === 'copy'));
+    expect((await copies()).map((entry) => entry.targets?.length)).toEqual([2, 1]);
+    await forgetHostHistory('b');
+    expect((await copies()).map((entry) => entry.targets?.map((t) => t.hostId))).toEqual([['c']]);
   });
 });
 
