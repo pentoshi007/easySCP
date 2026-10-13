@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Box, Text } from 'ink';
 import type { Context } from '../app/context.js';
 import { chooseHost } from '../app/hostPicker.js';
+import { conflictQuestion, summarizeResult } from '../app/transferText.js';
 import { AppError } from '../core/errors.js';
 import { findHost, type Host, requireHost } from '../core/hosts.js';
 import {
@@ -17,7 +18,7 @@ import { displayPath, parentDir, resolveInput } from '../fs/ops.js';
 import type { RemoteFileSystem } from '../fs/remote.js';
 import type { FileSystem } from '../fs/types.js';
 import { type Direction, recordTransfer } from '../transfer/history.js';
-import { isIdentical, planTransfer, type TransferPlan } from '../transfer/plan.js';
+import { planTransfer, type TransferPlan } from '../transfer/plan.js';
 import {
   type ConflictPolicy,
   runTransfer,
@@ -27,10 +28,9 @@ import {
 import { TransferView } from '../ui/components/TransferView.js';
 import type { Shortcut } from '../ui/picker/model.js';
 import { pickDirectory, pickFiles } from '../ui/picker/pickers.js';
-import type { Choice } from '../ui/prompts/SelectPrompt.js';
 import { colors, symbols } from '../ui/theme.js';
 import type { Ui } from '../ui/ui.js';
-import { formatBytes, formatDuration, formatSpeed, plural } from '../util/format.js';
+import { plural } from '../util/format.js';
 import { addHost } from './add.js';
 import { done, fail, type Outcome, warn } from './outcome.js';
 
@@ -79,7 +79,7 @@ async function existingDirs(fs: FileSystem, candidates: (string | undefined)[]):
   return checks.filter((dir): dir is string => dir !== undefined);
 }
 
-async function remoteStart(
+export async function remoteStart(
   fs: RemoteFileSystem,
   host: Host,
 ): Promise<{ start: string; shortcuts: Shortcut[] }> {
@@ -146,37 +146,10 @@ async function planWithProgress(ui: Ui, title: string, spec: Parameters<typeof p
 }
 
 async function askPolicy(ctx: Context, plan: TransferPlan, where: string): Promise<ConflictPolicy> {
-  const { conflicts, files } = plan;
-  const identical = conflicts.filter(isIdentical).length;
-  const shorter = conflicts.filter(
-    (file) => file.existing && file.existing.size < file.size && file.existing.size > 0,
-  ).length;
-  const choices: Choice<ConflictPolicy>[] = [
-    {
-      value: 'skip',
-      label: 'Skip them',
-      hint: identical === conflicts.length ? 'they look identical' : 'keep what is there',
-    },
-    { value: 'overwrite', label: 'Replace them' },
-    { value: 'newer', label: 'Replace only older ones', hint: 'compares modification time' },
-    { value: 'rename', label: 'Keep both', hint: 'new copies get a number, like file (1).txt' },
-  ];
-  if (shorter > 0) {
-    choices.push({
-      value: 'resume',
-      label: 'Resume',
-      hint: `continue ${plural(shorter, 'file')} that stopped part way`,
-    });
-  }
-  const what =
-    conflicts.length === files.length
-      ? conflicts.length === 1
-        ? 'This file already exists'
-        : `All ${conflicts.length} files already exist`
-      : `${conflicts.length} of ${files.length} files already exist`;
-  return ctx.ui.select(`${what} ${where}`, {
-    choices,
-    initial: shorter > 0 && shorter === conflicts.length ? 'resume' : 'skip',
+  const question = conflictQuestion(plan, where);
+  return ctx.ui.select(question.title, {
+    choices: question.choices,
+    initial: question.initial,
     filter: false,
   });
 }
@@ -233,44 +206,21 @@ function SkippedList({ plan }: { plan: TransferPlan }) {
 }
 
 function report(ui: Ui, result: TransferResult, verb: string, where: string): Outcome {
-  const files = plural(result.files, 'file');
-  const rate = result.durationMs > 0 ? (result.bytes * 1000) / result.durationMs : 0;
-  const stats = [
-    formatBytes(result.bytes),
-    `in ${formatDuration(result.durationMs)}`,
-    result.bytes > 0 && result.durationMs >= 200 ? formatSpeed(rate) : undefined,
-  ]
-    .filter(Boolean)
-    .join(` ${symbols.dot} `);
-  const skipped = result.skipped > 0 ? `${plural(result.skipped, 'existing file')} skipped` : '';
-
+  const summary = summarizeResult(result, verb, where);
   switch (result.status) {
-    case 'done': {
-      if (result.files === 0) return done('Everything is already up to date', skipped);
-      return done(
-        `${verb} ${files} ${where}`,
-        [stats, skipped].filter(Boolean).join(` ${symbols.dot} `),
-      );
-    }
-    case 'cancelled': {
+    case 'done':
+      return done(summary.message, summary.detail);
+    case 'cancelled':
       ui.step(
-        <Text color={colors.warning}>Cancelled after {files}</Text>,
-        result.keptPartials > 0 ? (
-          <Text color={colors.muted}>Run the same transfer again to resume where it stopped.</Text>
-        ) : undefined,
+        <Text color={colors.warning}>{summary.message}</Text>,
+        summary.detail ? <Text color={colors.muted}>{summary.detail}</Text> : undefined,
         'warning',
       );
       return warn('Transfer cancelled', 130);
-    }
-    case 'partial':
-    case 'failed': {
+    default: {
       const shown = result.failed.slice(0, MAX_LISTED_FAILURES);
       ui.step(
-        <Text color={colors.danger}>
-          {result.error
-            ? result.error.message
-            : `${plural(result.failed.length, 'file')} failed${result.files > 0 ? `, ${files} done` : ''}`}
-        </Text>,
+        <Text color={colors.danger}>{summary.message}</Text>,
         <Box flexDirection="column">
           {result.error?.hint ? <Text color={colors.muted}>{result.error.hint}</Text> : null}
           {shown.map((failure) => (
