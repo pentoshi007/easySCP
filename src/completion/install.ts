@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -45,12 +46,27 @@ function withoutBlock(text: string): string {
   return before + after;
 }
 
+async function replaceText(file: string, text: string): Promise<void> {
+  const mode = await stat(file).then(
+    (info) => info.mode & 0o777,
+    () => 0o644,
+  );
+  const temp = `${file}.easyscp-${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(temp, text, { mode });
+  try {
+    await rename(temp, file);
+  } catch (error) {
+    await rm(temp, { force: true });
+    throw error;
+  }
+}
+
 async function writeBlock(profile: string, body: string): Promise<void> {
   const target = await realpath(profile).catch(() => profile);
   const kept = withoutBlock((await readText(target)) ?? '');
   const glue = kept === '' ? '' : '\n';
   await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, `${kept}${glue}${BEGIN}\n${body}\n${END}\n`);
+  await replaceText(target, `${kept}${glue}${BEGIN}\n${body}\n${END}\n`);
 }
 
 async function removeBlock(profile: string): Promise<boolean> {
@@ -59,7 +75,7 @@ async function removeBlock(profile: string): Promise<boolean> {
   if (current === undefined) return false;
   const kept = withoutBlock(current);
   if (kept === current) return false;
-  await writeFile(target, kept);
+  await replaceText(target, kept);
   return true;
 }
 

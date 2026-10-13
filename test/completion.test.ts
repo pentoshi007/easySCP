@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { lstat, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,6 +66,15 @@ describe('installCompletion', () => {
     expect(await uninstallCompletion()).toContain(zshrc);
     expect(await read(zshrc)).toBe(original);
     expect((await completionState()).disabled).toBe(true);
+  });
+
+  it.skipIf(windows)('keeps the permissions of the profile it edits', async () => {
+    const zshrc = path.join(home, '.zshrc');
+    await writeFile(zshrc, 'x\n', { mode: 0o600 });
+    await installCompletion('zsh');
+    expect((await stat(zshrc)).mode & 0o777).toBe(0o600);
+    await Promise.all([installCompletion('zsh'), installCompletion('zsh')]);
+    expect((await read(zshrc)).match(/>>> easyscp completion >>>/g)).toHaveLength(1);
   });
 
   it('restores profiles exactly, with or without a final newline', async () => {
