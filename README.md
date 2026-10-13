@@ -50,7 +50,7 @@ easyscp copy web1:/srv/app.tar web2 web3:/opt -t /srv
 | `test [name]` | `ping`, `check` | Check that you can connect and log in |
 | `import` | | Import machines from `~/.ssh/config` |
 | `history` | `log` | Recent transfers, pick one to run again (`--json`, `--clear`) |
-| `completion <shell>` | | Print a completion script for bash, zsh, fish or PowerShell |
+| `completion [install\|uninstall\|<shell>]` | | Set up tab completion, or print a script for bash, zsh, fish or PowerShell |
 
 Transfer flags: `-t, --to <dir>` sets the destination folder. `--overwrite`, `--skip`, `--newer`, `--rename` and `--resume` decide what happens when a file already exists. `-y, --yes` accepts the defaults without asking. Run `easyscp <command> --help` for details.
 
@@ -76,13 +76,14 @@ Without a terminal, easyscp never prompts. It prints plain text, writes errors t
 | `2` | Invalid usage |
 | `130` | Cancelled |
 
-Enable shell completion:
+## Tab completion
+
+The first time you run easyscp in a terminal, it sets up tab completion for the shell you are using (bash, zsh, fish or PowerShell) and tells you where. Commands and machine names then complete with tab. The setup is a marked block in your shell profile that loads a script kept up to date by easyscp.
 
 ```sh
-easyscp completion zsh >> ~/.zshrc
-easyscp completion bash >> ~/.bashrc
-easyscp completion fish > ~/.config/fish/completions/easyscp.fish
-easyscp completion powershell >> $PROFILE
+easyscp completion install [shell]    # set it up again, or for another shell
+easyscp completion uninstall          # remove it and stop setting it up
+easyscp completion zsh                # print the script to manage it yourself
 ```
 
 ## Environment
@@ -93,6 +94,7 @@ easyscp completion powershell >> $PROFILE
 | `EASYSCP_SECRETS=file` | Store secrets in a private file instead of the OS keychain |
 | `EASYSCP_DEBUG=1` | Write an SSH debug log to `debug.log` in the easyscp folder |
 | `EASYSCP_ASCII=1` | Use ASCII symbols only |
+| `EASYSCP_NO_COMPLETION=1` | Don't set up tab completion automatically |
 | `NO_COLOR` | Disable colors |
 
 When no OS keychain is available, secrets go to a file that only your user can read. Treat that file like a private key.
