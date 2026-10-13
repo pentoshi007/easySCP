@@ -19,7 +19,11 @@ export function useListing(cache: DirCache, dir: string, version: number): Listi
   useEffect(() => {
     let live = true;
     const cached = version === 0 ? cache.peek(dir) : undefined;
-    setState({ dir, entries: cached, error: undefined });
+    setState((previous) => ({
+      dir,
+      entries: cached ?? (previous.dir === dir ? previous.entries : undefined),
+      error: undefined,
+    }));
     if (!cached) {
       cache.load(dir, version > 0).then(
         (entries) => {

@@ -1,3 +1,4 @@
+import { isPartName } from '../../fs/names.js';
 import { isHidden, resolveInput } from '../../fs/ops.js';
 import type { Entry, FileSystem } from '../../fs/types.js';
 import { fuzzyFilter } from '../../util/fuzzy.js';
@@ -119,7 +120,9 @@ export function buildRows({
     }
   }
 
-  const candidates = (entries ?? []).filter((entry) => mode !== 'dir' || entry.kind === 'dir');
+  const candidates = (entries ?? []).filter(
+    (entry) => !isPartName(entry.name) && (mode !== 'dir' || entry.kind === 'dir'),
+  );
   for (const { item, positions } of fuzzyFilter(candidates, filter, (entry) => entry.name)) {
     rows.push({
       kind: 'entry',
