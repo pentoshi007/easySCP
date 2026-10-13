@@ -1,5 +1,6 @@
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { render } from 'ink-testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renameEntry } from '../src/browser/actions.js';
 import { type CopyRecord, Explorer, type ExplorerExit } from '../src/browser/Explorer.js';
@@ -10,6 +11,7 @@ import {
   pickTargets,
   visibleRows,
 } from '../src/browser/model.js';
+import { type Pane, usePane } from '../src/browser/usePane.js';
 import { localFs } from '../src/fs/local.js';
 import type { Entry } from '../src/fs/types.js';
 import { symbols } from '../src/ui/theme.js';
@@ -77,6 +79,29 @@ describe('renameEntry', () => {
     const [item] = await localFs.list(root);
     await renameEntry(localFs, item as Entry, 'Notes.txt');
     expect((await localFs.list(root)).map((child) => child.name)).toEqual(['Notes.txt']);
+  });
+});
+
+describe('usePane', () => {
+  it('never shows a refreshed listing with a stale cursor', async () => {
+    const root = await tempDir();
+    await mkdir(path.join(root, 'drafts'));
+    await mkdir(path.join(root, 'photos'));
+    const seen: (string | undefined)[] = [];
+    let pane: Pane | undefined;
+    function Probe() {
+      pane = usePane({ fs: localFs, label: 'here', start: root, showHidden: false, pageSize: 10 });
+      if (pane.entries?.some((entry) => entry.name === 'plans')) seen.push(pane.current?.name);
+      return null;
+    }
+    const app = render(<Probe />);
+    await waitFor(() => pane?.current?.name === 'drafts');
+    await rename(path.join(root, 'drafts'), path.join(root, 'plans'));
+    pane?.refresh('plans');
+    await waitFor(() => seen.length > 0);
+    await tick(40);
+    expect(new Set(seen)).toEqual(new Set(['plans']));
+    app.unmount();
   });
 });
 

@@ -59,14 +59,20 @@ export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions)
     [listing.entries, showHidden],
   );
   const rows = useMemo(() => visibleRows(listed.pool, filter), [listed.pool, filter]);
-  const cursor = clampCursor(raw, rows.length, pageSize);
+  const settled =
+    focus !== undefined && listing.entries !== undefined && listing.entries !== focus.stale;
+  const focused = settled ? rows.findIndex((row) => row.entry.name === focus.name) : -1;
+  const cursor = clampCursor(
+    focused >= 0 ? { ...raw, index: focused } : raw,
+    rows.length,
+    pageSize,
+  );
 
   useEffect(() => {
-    if (!focus || !listing.entries || listing.entries === focus.stale) return;
-    const index = rows.findIndex((row) => row.entry.name === focus.name);
+    if (!settled) return;
     setFocus(undefined);
-    if (index >= 0) setRaw((current) => clampCursor({ ...current, index }, rows.length, pageSize));
-  }, [focus, listing.entries, rows, pageSize]);
+    if (focused >= 0) setRaw(cursor);
+  }, [settled, focused, cursor]);
 
   const open = useCallback((next: string, focusName?: string) => {
     setDir(next);
