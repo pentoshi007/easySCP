@@ -1,0 +1,38 @@
+import { AppError } from '../core/errors.js';
+import { removeTree } from '../fs/ops.js';
+import type { Entry, FileSystem } from '../fs/types.js';
+
+export async function createFolder(fs: FileSystem, dir: string, name: string): Promise<string> {
+  const target = fs.path.join(dir, name.trim());
+  if (await fs.stat(target)) throw new AppError(`${name.trim()} already exists`);
+  await fs.mkdir(target);
+  return target;
+}
+
+export async function renameEntry(fs: FileSystem, entry: Entry, name: string): Promise<string> {
+  const dir = fs.path.dirname(entry.path);
+  const target = fs.path.join(dir, name.trim());
+  if (target === entry.path) return target;
+  if (target.toLowerCase() !== entry.path.toLowerCase()) {
+    if (await fs.stat(target)) throw new AppError(`${name.trim()} already exists`);
+    await fs.rename(entry.path, target);
+    return target;
+  }
+  const step = fs.path.join(dir, `.${entry.name}.easyscp-rename`);
+  await fs.rename(entry.path, step);
+  await fs.rename(step, target);
+  return target;
+}
+
+export async function deleteEntries(
+  fs: FileSystem,
+  entries: Entry[],
+  signal?: AbortSignal,
+  onProgress?: (done: number) => void,
+): Promise<void> {
+  let done = 0;
+  for (const entry of entries) {
+    await removeTree(fs, entry.path, signal);
+    onProgress?.(++done);
+  }
+}

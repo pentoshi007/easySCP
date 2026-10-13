@@ -1,4 +1,6 @@
 import type { Key } from 'ink';
+import { render } from 'ink-testing-library';
+import type { ReactElement } from 'react';
 
 export function key(overrides: Partial<Key> = {}): Key {
   return {
@@ -49,4 +51,11 @@ export async function waitFor(check: () => boolean, timeout = 3000): Promise<voi
     if (Date.now() > deadline) throw new Error('Timed out waiting for the expected frame');
     await tick(20);
   }
+}
+
+export function renderScreen(tree: ReactElement, rows = 24) {
+  const app = render(tree);
+  Object.defineProperty(app.stdout, 'rows', { value: rows, configurable: true });
+  app.stdout.emit('resize');
+  return { ...app, frame: () => strip(app.lastFrame()) };
 }
