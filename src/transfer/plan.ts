@@ -8,8 +8,10 @@ export interface TransferSpec {
   target: FileSystem;
   sources: string[];
   destination: string;
-  intoDirectory?: boolean;
+  placement?: Placement;
 }
+
+export type Placement = 'into' | 'as';
 
 export interface PlannedFile {
   source: string;
@@ -29,6 +31,7 @@ export interface SkippedItem {
 
 export interface TransferPlan {
   spec: TransferSpec;
+  placement: Placement;
   anchor: string;
   files: PlannedFile[];
   dirs: string[];
@@ -148,10 +151,12 @@ export async function planTransfer(
   const destStat = await target.stat(destination);
   const single = sources.length === 1;
   let into: boolean;
-  if (destStat?.kind === 'dir') into = true;
-  else if (destStat && spec.intoDirectory) throw new AppError(`Not a folder: ${destination}`);
+  if (spec.placement === 'as' && single) into = false;
+  else if (destStat?.kind === 'dir') into = true;
+  else if (destStat && spec.placement === 'into')
+    throw new AppError(`Not a folder: ${destination}`);
   else if (destStat) into = false;
-  else into = spec.intoDirectory === true || !single || endsWithSeparator(target, destination);
+  else into = spec.placement === 'into' || !single || endsWithSeparator(target, destination);
 
   const roots: Entry[] = [];
   for (const path of sources) {
@@ -268,6 +273,7 @@ export async function planTransfer(
 
   return {
     spec,
+    placement: into ? 'into' : 'as',
     anchor,
     files,
     dirs,

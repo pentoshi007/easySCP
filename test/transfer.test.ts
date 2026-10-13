@@ -387,7 +387,7 @@ describe('planning', () => {
       target: remote,
       sources: [path.join(local, 'solo.txt')],
       destination: remotePath('fresh-folder'),
-      intoDirectory: true,
+      placement: 'into',
     });
     expect(plan.files[0]?.target).toBe(remotePath('fresh-folder', 'solo.txt'));
     await runTransfer(plan);

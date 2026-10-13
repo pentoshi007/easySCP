@@ -317,7 +317,7 @@ export function Explorer({
         target: to.fs,
         sources: items.map((entry) => entry.path),
         destination: to.dir,
-        intoDirectory: true,
+        placement: 'into',
       },
       { signal: abort.signal, onScan: (scanned) => update({ scanned }) },
     );

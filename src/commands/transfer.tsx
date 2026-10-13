@@ -329,7 +329,7 @@ export async function transferFlow(ctx: Context, request: TransferRequest): Prom
     target,
     sources,
     destination,
-    intoDirectory: picked,
+    placement: picked ? 'into' : undefined,
   });
 
   if (plan.skipped.length > 0) {
