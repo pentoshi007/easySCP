@@ -176,7 +176,7 @@ export async function requireHost(name: string): Promise<Host> {
   if (host) return host;
   const close = hosts.find((entry) => entry.name.toLowerCase().startsWith(name.toLowerCase()));
   throw new AppError(
-    `No saved host named "${name}"`,
+    `No saved machine named "${name}"`,
     close ? `Did you mean "${close.name}"?` : 'Run `easyscp add` to save one, or `easyscp list`.',
   );
 }
@@ -201,7 +201,7 @@ export async function updateHost(id: string, patch: Partial<HostDraft>): Promise
   await store.update((file) => {
     const index = file.hosts.findIndex((host) => host.id === id);
     const current = file.hosts[index];
-    if (!current) throw new AppError('Host no longer exists');
+    if (!current) throw new AppError('This machine is no longer saved');
     const next = stripEmpty({ ...current, ...patch });
     const error = validateHostName(next.name, file.hosts, id);
     if (error) throw new AppError(error);
