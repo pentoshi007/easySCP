@@ -12,6 +12,8 @@ export class SessionPool {
     if (cached) {
       const session = await cached.catch(() => undefined);
       if (session && !session.closed) return session;
+      const current = this.sessions.get(host.id);
+      if (current && current !== cached) return this.get(host);
     }
     return this.open(host);
   }
