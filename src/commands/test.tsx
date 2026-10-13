@@ -35,6 +35,7 @@ export async function probe(ctx: Context, host: Host): Promise<ProbeResult> {
   } catch (error) {
     if (error instanceof InterruptedError) throw error;
     const report = describeError(error);
+    if (!ctx.ui.interactive) return { ok: false, message: report.message, hint: report.hint };
     ctx.ui.step(
       <Text color={colors.danger}>Could not connect to {host.name}</Text>,
       <>
@@ -53,5 +54,8 @@ export async function testCommand(ctx: Context): Promise<Outcome> {
     name: ctx.args.positionals[0],
   });
   const result = await probe(ctx, host);
-  return result.ok ? done(result.message) : fail(`${host.name} is not reachable`);
+  if (result.ok) return done(result.message);
+  return ctx.ui.interactive
+    ? fail(`${host.name} is not reachable`)
+    : fail(`Could not connect to ${host.name}: ${result.message}`, result.hint);
 }

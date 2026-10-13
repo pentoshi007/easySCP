@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { findCommand, parseCommandLine, suggestCommand } from '../src/cli/args.js';
 import { renderHelp } from '../src/cli/help.js';
 import { completionScript } from '../src/commands/completion.js';
+import { colorsDisabled } from '../src/ui/theme.js';
 
 describe('parseCommandLine', () => {
   it('resolves commands and aliases', () => {
@@ -45,6 +46,18 @@ describe('help and completion', () => {
     expect(help).toContain('send, up');
     expect(help).not.toContain('\u001B');
     expect(renderHelp(false, findCommand('send'))).toContain('--resume');
+  });
+
+  it('honours NO_COLOR unless colour is forced', () => {
+    expect(colorsDisabled({ NO_COLOR: '1' })).toBe(true);
+    expect(colorsDisabled({ NO_COLOR: '' })).toBe(false);
+    expect(colorsDisabled({ NO_COLOR: '1', FORCE_COLOR: '1' })).toBe(false);
+  });
+
+  it('runs the zsh completion when autoloaded from fpath', () => {
+    const script = completionScript('zsh');
+    expect(script.startsWith('#compdef easyscp escp')).toBe(true);
+    expect(script).toContain('_easyscp "$@"');
   });
 
   it('generates completion scripts for every shell', () => {

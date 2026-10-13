@@ -45,6 +45,7 @@ interface HostState {
 export interface UiStreams {
   stdin: NodeJS.ReadStream;
   stdout: NodeJS.WriteStream;
+  stderr?: NodeJS.WriteStream;
 }
 
 const FORCE_EXIT_WINDOW = 2000;
@@ -105,11 +106,10 @@ export class Ui {
     return this.streams.stdout.columns || (this.streams.stdout.isTTY ? 80 : 200);
   }
 
-  print(node: ReactNode): void {
+  print(node: ReactNode, toStderr = false): void {
     if (!this.interactive) {
-      this.streams.stdout.write(
-        `${renderToString(<Box>{node}</Box>, { columns: this.columns })}\n`,
-      );
+      const stream = toStderr ? (this.streams.stderr ?? process.stderr) : this.streams.stdout;
+      stream.write(`${renderToString(<Box>{node}</Box>, { columns: this.columns })}\n`);
       return;
     }
     this.mount();
@@ -154,6 +154,23 @@ export class Ui {
   }
 
   step(title: ReactNode, detail?: ReactNode, tone?: Tone): void {
+    if (!this.interactive) {
+      this.print(
+        <Box flexDirection="column">
+          <Text>
+            {tone ? <Text color={toneColor[tone]}>{toneSymbol[tone]} </Text> : null}
+            {title}
+          </Text>
+          {detail ? (
+            <Box flexDirection="column" paddingLeft={2}>
+              {typeof detail === 'string' ? <Text color={colors.muted}>{detail}</Text> : detail}
+            </Box>
+          ) : null}
+        </Box>,
+        tone === 'danger' || tone === 'warning',
+      );
+      return;
+    }
     this.print(
       <Frame
         title={title}
@@ -369,7 +386,7 @@ export class Ui {
     await this.unmount();
   }
 
-  private interrupt(): void {
+  interrupt(): void {
     const now = Date.now();
     const repeated = now - this.lastInterrupt < FORCE_EXIT_WINDOW;
     this.lastInterrupt = now;

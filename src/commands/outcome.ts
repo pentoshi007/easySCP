@@ -14,4 +14,9 @@ export const done = (message: string, detail?: string): Outcome => ({
   ...(detail ? { detail } : {}),
 });
 export const warn = (message: string, code = 1): Outcome => ({ message, tone: 'warning', code });
-export const fail = (message: string, code = 1): Outcome => ({ message, tone: 'danger', code });
+export const fail = (message: string, detail?: string): Outcome => ({
+  message,
+  tone: 'danger',
+  code: 1,
+  ...(detail ? { detail } : {}),
+});

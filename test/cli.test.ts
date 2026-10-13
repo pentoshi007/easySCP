@@ -88,8 +88,16 @@ describe('cli', () => {
     expect(await main(['completion', 'tcsh'])).toBe(2);
   });
 
+  it('reports connection failures on stderr with a hint', async () => {
+    await createHost({ name: 'down', hostname: '127.0.0.1', port: 1, user: 'u', auth: 'auto' });
+    expect(await main(['test', 'down'])).toBe(1);
+    expect(output).toBe('');
+    expect(errors).toMatch(/Could not connect to down: Connection refused/);
+    expect(errors).toMatch(/Is the SSH server running/);
+  });
+
   it('lists machine names for shell completion', async () => {
     expect(await main(['__hosts'])).toBe(0);
-    expect(output).toBe('box\n');
+    expect(output).toBe('box\ndown\n');
   });
 });

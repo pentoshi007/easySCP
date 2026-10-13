@@ -19,6 +19,7 @@ import { testCommand } from '../commands/test.js';
 import { transferCommand } from '../commands/transfer.js';
 import { AppError, describeError, InterruptedError, wentBack } from '../core/errors.js';
 import { findHost, listHosts } from '../core/hosts.js';
+import { streamColors } from '../ui/theme.js';
 import { Ui } from '../ui/ui.js';
 import { type Context, createContext } from './context.js';
 
@@ -53,7 +54,7 @@ const HANDLERS: Record<
 };
 
 function writeError(message: string, hint?: string): void {
-  const color = process.stderr.isTTY && !process.env.NO_COLOR;
+  const color = streamColors(process.stderr);
   const red = (text: string) => (color ? `\u001B[31m${text}\u001B[39m` : text);
   const dim = (text: string) => (color ? `\u001B[2m${text}\u001B[22m` : text);
   process.stderr.write(`${red('error')} ${message}\n`);
@@ -122,7 +123,7 @@ export async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const color = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+  const color = streamColors(process.stdout);
   if (args.version) {
     process.stdout.write(`${__VERSION__}\n`);
     return 0;
@@ -159,13 +160,17 @@ export async function main(argv: string[]): Promise<number> {
 
   const ui = new Ui();
   const ctx = createContext(ui, args);
+  const onSignal = () => ui.interrupt();
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
   let code = 0;
   try {
     ui.intro(args.command ? TITLES[args.command.name] : args.word ? args.word : `v${__VERSION__}`);
     const outcome = await dispatch(ctx, args);
     if (outcome) {
       if (ui.interactive) ui.outro(outcome.message, outcome.tone, outcome.detail);
-      else if (outcome.tone === 'danger' || outcome.tone === 'warning') writeError(outcome.message);
+      else if (outcome.tone === 'danger' || outcome.tone === 'warning')
+        writeError(outcome.message, outcome.detail);
       else {
         const detail = outcome.detail ? ` (${outcome.detail})` : '';
         process.stdout.write(`${outcome.message}${detail}\n`);
@@ -175,6 +180,8 @@ export async function main(argv: string[]): Promise<number> {
   } catch (error) {
     code = reportFailure(ui, error);
   } finally {
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
     ctx.close();
     await ui.close();
   }
