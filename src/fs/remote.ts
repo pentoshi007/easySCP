@@ -214,13 +214,25 @@ export class RemoteFileSystem implements FileSystem {
     } catch (error) {
       if (!/does not support/i.test((error as Error).message)) throw error;
     }
+    const move = (source: string, destination: string) =>
+      call<void>(this.session, destination, (done) => this.sftp.rename(source, destination, done));
     try {
-      await call<void>(this.session, to, (done) => this.sftp.rename(from, to, done));
+      await move(from, to);
     } catch (error) {
       const existing = await this.stat(to);
       if (!existing || existing.kind === 'dir') throw error;
-      await this.removeFile(to);
-      await call<void>(this.session, to, (done) => this.sftp.rename(from, to, done));
+      const backup = this.path.join(
+        this.path.dirname(to),
+        `.${this.path.basename(to)}.easyscp-old`,
+      );
+      await move(to, backup);
+      try {
+        await move(from, to);
+      } catch (failure) {
+        await move(backup, to).catch(() => undefined);
+        throw failure;
+      }
+      await this.removeFile(backup).catch(() => undefined);
     }
   }
 
