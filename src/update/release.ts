@@ -84,6 +84,7 @@ export async function latestRelease(options: ReleaseOptions = {}): Promise<Relea
     if (options.signal?.aborted) throw error;
     throw unreachable();
   }
+  if (response.status === 404) throw new AppError('No easyscp release has been published yet');
   if (!response.ok) {
     throw new AppError(
       `Couldn't check for updates (GitHub answered ${response.status})`,
