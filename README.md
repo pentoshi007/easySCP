@@ -2,19 +2,35 @@
 
 Friendly, fast file transfers over SSH. Save a machine once, then send, receive and browse files without typing `scp` commands.
 
-Works the same on macOS, Linux and Windows. Requires Node.js 22 or newer.
+Works the same on macOS, Linux and Windows.
 
 ## Install
 
 ```sh
-git clone https://github.com/pentoshi007/easySCP.git
-cd easySCP
-npm ci
-npm run build
-npm install -g .
+# macOS and Linux
+curl -fsSL https://github.com/pentoshi007/easySCP/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/pentoshi007/easySCP/releases/latest/download/install.ps1 | iex
+
+# Homebrew
+brew install pentoshi007/tap/easyscp
+
+# npm (Node.js 22 or newer)
+npm install -g easyscp
 ```
 
-This installs two commands: `easyscp` and the shorter `escp`.
+The install scripts download a standalone binary that needs nothing else, check it against the release checksums, put it on your `PATH` and set up tab completion. Set `EASYSCP_INSTALL_DIR` to choose the folder or `EASYSCP_VERSION` to pin a version. You can also download the binaries for x64 and arm64 from the [releases page](https://github.com/pentoshi007/easySCP/releases).
+
+Every method installs two commands: `easyscp` and the shorter `escp`.
+
+## Updating
+
+```sh
+easyscp update
+```
+
+This updates easyscp the same way it was installed: it downloads, verifies and swaps in the new binary, or runs npm or Homebrew for you. easyscp checks for a new release once a day and tells you when one is out.
 
 ## Quick start
 
@@ -50,6 +66,7 @@ easyscp copy web1:/srv/app.tar web2 web3:/opt -t /srv
 | `test [name]` | `ping`, `check` | Check that you can connect and log in |
 | `import` | | Import machines from `~/.ssh/config` |
 | `history` | `log` | Recent transfers, pick one to run again (`--json`, `--clear`) |
+| `update` | `upgrade` | Update easyscp to the latest release |
 | `completion [install\|uninstall\|<shell>]` | | Set up tab completion, or print a script for bash, zsh, fish or PowerShell |
 
 Transfer flags: `-t, --to <dir>` sets the destination folder. `--overwrite`, `--skip`, `--newer`, `--rename` and `--resume` decide what happens when a file already exists. `-y, --yes` accepts the defaults without asking. Run `easyscp <command> --help` for details.
@@ -95,6 +112,7 @@ easyscp completion zsh                # print the script to manage it yourself
 | `EASYSCP_DEBUG=1` | Write an SSH debug log to `debug.log` in the easyscp folder |
 | `EASYSCP_ASCII=1` | Use ASCII symbols only |
 | `EASYSCP_NO_COMPLETION=1` | Don't set up tab completion automatically |
+| `EASYSCP_NO_UPDATE_CHECK=1` | Don't check for new releases |
 | `NO_COLOR` | Disable colors |
 
 When no OS keychain is available, secrets go to a file that only your user can read. Treat that file like a private key.
@@ -102,10 +120,15 @@ When no OS keychain is available, secrets go to a file that only your user can r
 ## Development
 
 ```sh
+git clone https://github.com/pentoshi007/easySCP.git && cd easySCP
 npm ci
-npm run check    # typecheck, lint and tests
-npm run dev      # rebuild on change
+npm run check           # typecheck, lint and tests
+npm run dev             # rebuild dist/ on change
+npm install -g .        # use your build as easyscp
+npm run build:binary    # standalone binary in release/ (needs Node.js 25.5+)
 ```
+
+Pushing a `v*` tag that matches `package.json` builds and tests the binaries on every platform, then publishes to npm, GitHub Releases and the Homebrew tap.
 
 ## License
 
