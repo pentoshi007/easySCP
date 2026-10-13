@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { findCommand, parseCommandLine, suggestCommand } from '../src/cli/args.js';
 import { renderHelp } from '../src/cli/help.js';
 import { completionScript } from '../src/commands/completion.js';
+import { parseCopyTokens } from '../src/commands/copyArgs.js';
+import type { Host } from '../src/core/hosts.js';
 import { colorsDisabled } from '../src/ui/theme.js';
 
 describe('parseCommandLine', () => {
@@ -28,6 +30,44 @@ describe('parseCommandLine', () => {
   it('accepts global flags anywhere', () => {
     expect(parseCommandLine(['send', '-y']).yes).toBe(true);
     expect(parseCommandLine(['--help', 'send']).help).toBe(true);
+  });
+});
+
+describe('parseCopyTokens', () => {
+  const machine = (name: string) => ({ id: `id-${name}`, name }) as Host;
+  const hosts = ['web1', 'web2', 'web3'].map(machine);
+  const parse = (...tokens: string[]) => {
+    const request = parseCopyTokens(tokens, hosts);
+    return {
+      source: request.source?.name,
+      paths: request.paths,
+      destinations: request.destinations.map((entry) => `${entry.host.name}=${entry.dir ?? ''}`),
+    };
+  };
+
+  it('reads machine:path pairs like scp', () => {
+    expect(parse('web1:/srv/app.tar', 'web2', 'web3:/opt')).toEqual({
+      source: 'web1',
+      paths: ['/srv/app.tar'],
+      destinations: ['web2=', 'web3=/opt'],
+    });
+  });
+
+  it('accepts paths after the source machine and repeated sources', () => {
+    expect(parse('web1', 'logs/', 'web1:etc/app.conf', 'web2')).toEqual({
+      source: 'web1',
+      paths: ['logs/', 'etc/app.conf'],
+      destinations: ['web2='],
+    });
+    expect(parse('WEB1:a', 'web2', 'web2')).toMatchObject({ destinations: ['web2='] });
+  });
+
+  it('explains mistakes', () => {
+    expect(() => parse('nope:/x', 'web2')).toThrow(/No saved machine named "nope"/);
+    expect(() => parse('web1:/x', 'nope:/y')).toThrow(/No saved machine named "nope"/);
+    expect(() => parse('web1:/x', 'web2', 'stray')).toThrow(/"stray" is not a saved machine/);
+    expect(() => parse('web1:/x', 'web1')).toThrow(/copying from/);
+    expect(parse()).toEqual({ source: undefined, paths: [], destinations: [] });
   });
 });
 

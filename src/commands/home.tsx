@@ -9,6 +9,7 @@ import { colors, toneColor } from '../ui/theme.js';
 import { plural } from '../util/format.js';
 import { addHost } from './add.js';
 import { browseCommand, browseHost } from './browse.js';
+import { copyFlow } from './copy.js';
 import { editHostFields } from './edit.js';
 import { describeEntry, historyCommand, repeatTransfer } from './history.js';
 import { importCandidates, importCommand } from './import.js';
@@ -49,12 +50,16 @@ export async function hostMenu(ctx: Context, initial: Host): Promise<Outcome | u
     const current = (await listHosts()).find((entry) => entry.id === host.id);
     if (!current) return done(`Removed ${host.name}`);
     host = current;
+    const others = (await listHosts()).length - 1;
     let removed = false;
     const choice = await ctx.ui.select(`${host.name}`, {
       filter: false,
       choices: [
         { value: 'send', label: `Send files to ${host.name}` },
         { value: 'receive', label: `Receive files from ${host.name}` },
+        ...(others > 0
+          ? [{ value: 'copy', label: `Copy files from ${host.name} to other machines` }]
+          : []),
         { value: 'browse', label: 'Browse files', hint: 'side by side with this computer' },
         { value: 'test', label: 'Test connection' },
         { value: 'edit', label: 'Edit details' },
@@ -69,6 +74,8 @@ export async function hostMenu(ctx: Context, initial: Host): Promise<Outcome | u
           return transferFlow(ctx, { direction: 'upload', host });
         case 'receive':
           return transferFlow(ctx, { direction: 'download', host });
+        case 'copy':
+          return copyFlow(ctx, { source: host });
         case 'browse':
           return browseHost(ctx, host);
         case 'test':
@@ -161,8 +168,19 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
     choices.push(
       { value: 'send', label: 'Send files', hint: 'upload to a machine' },
       { value: 'receive', label: 'Receive files', hint: 'download from a machine' },
-      { value: 'browse', label: 'Browse files', hint: 'copy, rename and delete side by side' },
     );
+    if (hosts.length > 1) {
+      choices.push({
+        value: 'copy',
+        label: 'Copy between machines',
+        hint: 'from one machine to others, through here',
+      });
+    }
+    choices.push({
+      value: 'browse',
+      label: 'Browse files',
+      hint: 'copy, rename and delete side by side',
+    });
     if (history.length > 0) {
       choices.push({
         value: 'history',
@@ -196,6 +214,8 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
           return transferFlow(ctx, { direction: 'upload' });
         case 'receive':
           return transferFlow(ctx, { direction: 'download' });
+        case 'copy':
+          return copyFlow(ctx, {});
         case 'browse':
           return browseCommand(ctx);
         case 'history':

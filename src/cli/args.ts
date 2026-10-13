@@ -5,6 +5,7 @@ import type { ConflictPolicy } from '../transfer/run.js';
 export type CommandName =
   | 'send'
   | 'receive'
+  | 'copy'
   | 'browse'
   | 'add'
   | 'edit'
@@ -57,6 +58,14 @@ export const COMMANDS: CommandInfo[] = [
     aliases: ['get', 'down', 'pull', 'download'],
     args: '[host] [paths...]',
     summary: 'Download files or folders from a machine',
+    group: 'Transfer',
+    flags: ['to', ...POLICY_FLAGS],
+  },
+  {
+    name: 'copy',
+    aliases: ['cp', 'relay'],
+    args: '[from[:paths]] [paths...] [to[:folder]...]',
+    summary: 'Copy files from one machine to others through this computer',
     group: 'Transfer',
     flags: ['to', ...POLICY_FLAGS],
   },

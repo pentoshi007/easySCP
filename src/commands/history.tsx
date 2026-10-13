@@ -7,7 +7,15 @@ import { displayPath } from '../fs/ops.js';
 import { clearHistory, type HistoryEntry, listHistory } from '../transfer/history.js';
 import type { Choice } from '../ui/prompts/SelectPrompt.js';
 import { colors, symbols } from '../ui/theme.js';
-import { formatBytes, formatRelative, plural, printable, truncateMiddle } from '../util/format.js';
+import {
+  formatBytes,
+  formatRelative,
+  joinNames,
+  plural,
+  printable,
+  truncateMiddle,
+} from '../util/format.js';
+import { copyFlow } from './copy.js';
 import { done, type Outcome, warn } from './outcome.js';
 import { transferFlow } from './transfer.js';
 
@@ -23,16 +31,30 @@ function baseName(value: string): string {
   return parts.at(-1) ?? value;
 }
 
+const ARROWS: Record<HistoryEntry['direction'], string> = {
+  upload: symbols.arrowUp,
+  download: symbols.arrowDown,
+  copy: symbols.fanOut,
+};
+
+function destinationOf(entry: HistoryEntry): string {
+  switch (entry.direction) {
+    case 'upload':
+      return `${entry.hostName}:${entry.destination}`;
+    case 'download':
+      return displayPath(localFs, entry.destination);
+    default:
+      return joinNames((entry.targets ?? []).map((target) => target.hostName));
+  }
+}
+
 export function describeEntry(entry: HistoryEntry): { label: string; hint: string } {
-  const arrow = entry.direction === 'upload' ? symbols.arrowUp : symbols.arrowDown;
+  const arrow = ARROWS[entry.direction];
   const [first] = entry.sources;
   const what = first
     ? `${printable(baseName(first))}${entry.sources.length > 1 ? ` +${entry.sources.length - 1}` : ''}`
     : 'nothing';
-  const destination =
-    entry.direction === 'upload'
-      ? `${entry.hostName}:${entry.destination}`
-      : displayPath(localFs, entry.destination);
+  const destination = destinationOf(entry);
   const label = `${arrow} ${what} ${symbols.arrowRight} ${truncateMiddle(destination, 48)}`;
   const amount =
     entry.files > 0
@@ -66,14 +88,24 @@ function HistoryTable({ entries }: { entries: HistoryEntry[] }) {
 }
 
 export async function repeatTransfer(ctx: Context, entry: HistoryEntry): Promise<Outcome> {
-  const host = (await listHosts()).find((candidate) => candidate.id === entry.hostId);
+  const hosts = await listHosts();
+  const host = hosts.find((candidate) => candidate.id === entry.hostId);
   if (!host) throw new AppError(`${entry.hostName} is no longer saved`);
+  const policy = entry.status === 'done' ? undefined : 'resume';
+  if (entry.direction === 'copy') {
+    const destinations = (entry.targets ?? []).flatMap((target) => {
+      const saved = hosts.find((candidate) => candidate.id === target.hostId);
+      return saved ? [{ host: saved, dir: target.destination || undefined }] : [];
+    });
+    if (destinations.length === 0) throw new AppError('Those machines are no longer saved');
+    return copyFlow(ctx, { source: host, paths: entry.sources, destinations, policy });
+  }
   return transferFlow(ctx, {
     direction: entry.direction,
     host,
     sources: entry.sources,
     destination: entry.destination,
-    policy: entry.status === 'done' ? undefined : 'resume',
+    policy,
   });
 }
 

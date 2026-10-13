@@ -1,8 +1,9 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../src/app/main.js';
 import { createHost, type Host } from '../src/core/hosts.js';
+import { cacheDir } from '../src/core/paths.js';
 import { setSecret } from '../src/core/secrets.js';
 import { listHistory } from '../src/transfer/history.js';
 import { isolatedEnvironment } from './helpers/env.js';
@@ -99,5 +100,59 @@ describe('cli', () => {
   it('lists machine names for shell completion', async () => {
     expect(await main(['__hosts'])).toBe(0);
     expect(output).toBe('box\ndown\n');
+  });
+});
+
+describe('copy', () => {
+  beforeAll(async () => {
+    for (const name of ['web2', 'web3']) {
+      const saved = await createHost({
+        name,
+        hostname: '127.0.0.1',
+        port: server.port,
+        user: 'u',
+        auth: 'password',
+      });
+      await setSecret(saved.id, 'password', 'p');
+    }
+    await mkdir(remote('src', 'deep'), { recursive: true });
+    await writeFile(remote('src', 'a.txt'), 'alpha');
+    await writeFile(remote('src', 'deep', 'b.txt'), 'beta');
+  });
+
+  it('relays one source to several machines and cleans up', async () => {
+    expect(await main(['copy', 'box:src', 'web2:out2', 'web3:/home/test/out3', '-y'])).toBe(0);
+    expect(output).toMatch(/Copied 2 files to web2 and web3/);
+    for (const dir of ['out2', 'out3']) {
+      expect(await readFile(remote(dir, 'src', 'a.txt'), 'utf8')).toBe('alpha');
+      expect(await readFile(remote(dir, 'src', 'deep', 'b.txt'), 'utf8')).toBe('beta');
+    }
+    expect(await readdir(path.join(cacheDir(), 'relay'))).toEqual([]);
+    const [entry] = await listHistory();
+    expect(entry).toMatchObject({ direction: 'copy', hostName: 'box', files: 2 });
+    expect(entry?.targets?.map((target) => target.hostName)).toEqual(['web2', 'web3']);
+  });
+
+  it('asks for a conflict policy and skips what is already there', async () => {
+    expect(await main(['copy', 'box:src', 'web2:out2', 'web3:out3'])).toBe(1);
+    expect(errors).toMatch(/4 files already exist on web2 and web3/);
+    expect(await main(['cp', 'box:src', 'web2:out2', 'web3:out3', '--skip'])).toBe(0);
+    expect(output).toMatch(/Everything is already up to date/);
+  });
+
+  it('uses --to for machines without a folder and needs one otherwise', async () => {
+    expect(await main(['copy', 'box', 'src/a.txt', 'web2', 'web3:other', '-t', 'shared'])).toBe(0);
+    expect(await readFile(remote('shared', 'a.txt'), 'utf8')).toBe('alpha');
+    expect(await readFile(remote('other', 'a.txt'), 'utf8')).toBe('alpha');
+    expect(await main(['copy', 'box:src/a.txt', 'web2'])).toBe(1);
+    expect(errors).toMatch(/Choose where to put the files on web2/);
+  });
+
+  it('still delivers to reachable machines when one is down', async () => {
+    expect(await main(['copy', 'box:src/a.txt', 'web2:partial', 'down:partial'])).toBe(1);
+    expect(await readFile(remote('partial', 'a.txt'), 'utf8')).toBe('alpha');
+    expect(errors).toMatch(/down/);
+    expect(errors).toMatch(/Connection refused/);
+    expect(errors).toMatch(/Copied to 1 of 2 machines/);
   });
 });

@@ -18,7 +18,7 @@ import { displayPath, parentDir, resolveInput } from '../fs/ops.js';
 import type { RemoteFileSystem } from '../fs/remote.js';
 import type { FileSystem } from '../fs/types.js';
 import { type Direction, recordTransfer } from '../transfer/history.js';
-import { planTransfer, type TransferPlan } from '../transfer/plan.js';
+import { planTransfer, type SkippedItem, type TransferPlan } from '../transfer/plan.js';
 import {
   type ConflictPolicy,
   runTransfer,
@@ -186,19 +186,18 @@ async function runWithProgress(
   }
 }
 
-function SkippedList({ plan }: { plan: TransferPlan }) {
-  const shown = plan.skipped.slice(0, MAX_LISTED_FAILURES);
+export function SkippedList({ fs, items }: { fs: FileSystem; items: SkippedItem[] }) {
+  const shown = items.slice(0, MAX_LISTED_FAILURES);
   return (
     <Box flexDirection="column">
       {shown.map((item) => (
         <Text key={item.path} color={colors.muted} wrap="truncate-middle">
-          {symbols.dot} {displayPath(plan.spec.source, item.path)}{' '}
-          <Text dimColor>{item.reason}</Text>
+          {symbols.dot} {displayPath(fs, item.path)} <Text dimColor>{item.reason}</Text>
         </Text>
       ))}
-      {plan.skipped.length > shown.length ? (
+      {items.length > shown.length ? (
         <Text color={colors.muted}>
-          {symbols.ellipsis} and {plan.skipped.length - shown.length} more
+          {symbols.ellipsis} and {items.length - shown.length} more
         </Text>
       ) : null}
     </Box>
@@ -335,7 +334,7 @@ export async function transferFlow(ctx: Context, request: TransferRequest): Prom
   if (plan.skipped.length > 0) {
     ui.step(
       <Text color={colors.warning}>{plural(plan.skipped.length, 'item')} will be skipped</Text>,
-      <SkippedList plan={plan} />,
+      <SkippedList fs={plan.spec.source} items={plan.skipped} />,
       'warning',
     );
   }

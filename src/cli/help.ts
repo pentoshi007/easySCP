@@ -23,6 +23,7 @@ const POLICY_HELP: [string, string][] = [
 const FLAG_HELP: Record<string, [string, string][]> = {
   send: [['-t, --to <dir>', 'Remote folder to upload into'], ...POLICY_HELP],
   receive: [['-t, --to <dir>', 'Local folder to download into'], ...POLICY_HELP],
+  copy: [['-t, --to <dir>', 'Folder for machines listed without one'], ...POLICY_HELP],
   list: [['--json', 'Print machines as JSON']],
   history: [
     ['--json', 'Print history as JSON'],
@@ -39,6 +40,11 @@ const EXAMPLES: Record<string, string[]> = {
   receive: [
     'easyscp get prod                    browse prod and pick what to download',
     "easyscp get prod '/var/log/*.log' -t ./logs",
+  ],
+  copy: [
+    'easyscp copy                        pick the machines and files',
+    'easyscp copy web1:/srv/app.tar web2 web3 -t /srv',
+    'easyscp copy web1 logs/ web2:/backup web3:/backup',
   ],
   browse: ['easyscp browse prod                 copy, rename and delete on both sides'],
   add: ['easyscp add', 'easyscp add deploy@203.0.113.7:2222'],

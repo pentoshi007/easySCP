@@ -8,6 +8,7 @@ import { renderHelp } from '../cli/help.js';
 import { addCommand } from '../commands/add.js';
 import { browseCommand } from '../commands/browse.js';
 import { completionScript, isShell } from '../commands/completion.js';
+import { copyCommand } from '../commands/copy.js';
 import { editCommand } from '../commands/edit.js';
 import { historyCommand } from '../commands/history.js';
 import { homeCommand, hostMenu } from '../commands/home.js';
@@ -26,6 +27,7 @@ import { type Context, createContext } from './context.js';
 const TITLES: Record<CommandName, string> = {
   send: 'send files',
   receive: 'receive files',
+  copy: 'copy between machines',
   browse: 'browse files',
   add: 'add a machine',
   edit: 'edit a machine',
@@ -43,6 +45,7 @@ const HANDLERS: Record<
 > = {
   send: (ctx) => transferCommand(ctx, 'upload'),
   receive: (ctx) => transferCommand(ctx, 'download'),
+  copy: copyCommand,
   browse: browseCommand,
   add: addCommand,
   edit: editCommand,
