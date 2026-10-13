@@ -122,7 +122,7 @@ export function RelayView({ title, source, progress, cancelling }: RelayViewProp
           <ProgressBar
             value={progress.neededBytes > 0 ? fetched / progress.neededBytes : 1}
             width={barWidth}
-            color={colors.muted}
+            color="white"
           />
           <Text color={colors.muted}>
             {percent(progress.neededBytes > 0 ? fetched / progress.neededBytes : 1)}{' '}
