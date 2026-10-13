@@ -22,6 +22,7 @@ This installs two commands: `easyscp` and the shorter `escp`.
 easyscp add            # save a machine and how to log in
 easyscp send prod      # pick local files, then a remote folder
 easyscp get prod       # pick remote files, then a local folder
+easyscp copy           # copy from one machine to others
 easyscp browse prod    # side-by-side browser for both computers
 easyscp                # interactive menu
 ```
@@ -31,6 +32,7 @@ Leave out an argument and easyscp asks for it with a picker. You can still pass 
 ```sh
 easyscp send prod ./dist -t /var/www --overwrite
 easyscp get prod '/var/log/*.log' -t ./logs
+easyscp copy web1:/srv/app.tar web2 web3:/opt -t /srv
 ```
 
 ## Commands
@@ -39,6 +41,7 @@ easyscp get prod '/var/log/*.log' -t ./logs
 | --- | --- | --- |
 | `send [machine] [files...]` | `up`, `push`, `upload` | Upload files or folders |
 | `receive [machine] [paths...]` | `get`, `down`, `pull`, `download` | Download files or folders |
+| `copy [from[:paths]] [to[:folder]...]` | `cp`, `relay` | Copy from one machine to others |
 | `browse [machine]` | `open`, `files` | Side-by-side file browser |
 | `add [user@host[:port]]` | `new` | Save a machine |
 | `edit [name]` | | Change a saved machine |
@@ -59,6 +62,7 @@ Transfer flags: `-t, --to <dir>` sets the destination folder. `--overwrite`, `--
 - Fuzzy file pickers for local and remote files. `ctrl+f` searches subfolders. You can drag and drop or paste paths.
 - Fast, pipelined SFTP transfers with live progress. Each file is written to a temporary name and renamed when complete, so an interrupted transfer never leaves a half-written file under the real name.
 - Interrupted transfers resume where they stopped.
+- `copy` moves files between machines that can't reach each other. Your computer downloads each file once and uploads it to every destination at the same time. Data is staged in a private cache that is deleted as each file finishes. If one machine drops, easyscp reconnects and resumes from the cache without downloading again.
 - The browser lets you copy, rename, delete, create folders and filter on both sides. Press `?` for its keys.
 
 ## Scripting
