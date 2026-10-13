@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { loadKeyring } from './keyring.js';
 import { appFile } from './paths.js';
 import { JsonStore, readText, writeFileAtomic } from './store.js';
 
@@ -126,7 +127,7 @@ function b64(value: string): Buffer {
 async function loadKeychain(): Promise<SecretBackend | undefined> {
   if (process.env.EASYSCP_SECRETS === 'file') return undefined;
   try {
-    const keyring = (await import('@napi-rs/keyring')) as unknown as KeyringModule;
+    const keyring = await loadKeyring<KeyringModule>();
     const backend = new KeychainBackend(keyring);
     await backend.get('__probe__');
     return backend;
