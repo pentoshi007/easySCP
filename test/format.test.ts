@@ -60,8 +60,8 @@ describe('truncateMiddle', () => {
 
 describe('printable', () => {
   it('neutralises terminal control characters in names', () => {
-    const escape = String.fromCharCode(27);
-    expect(printable(`evil${escape}[2Jname\u0007`)).toBe('evil?[2Jname?');
+    const esc = String.fromCharCode(27);
+    expect(printable(`evil${esc}[2Jname\u0007`)).toBe('evil?[2Jname?');
     expect(printable('café ünïcode.txt')).toBe('café ünïcode.txt');
     expect(printable('a\u009bb')).toBe('a?b');
   });
