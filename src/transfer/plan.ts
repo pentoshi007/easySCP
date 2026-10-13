@@ -1,5 +1,5 @@
 import { AppError } from '../core/errors.js';
-import { partName, portableName } from '../fs/names.js';
+import { isPlainName, partName, portableName } from '../fs/names.js';
 import { parentDir } from '../fs/ops.js';
 import type { Entry, FileSystem } from '../fs/types.js';
 
@@ -94,7 +94,9 @@ async function walk(
             options.signal?.throwIfAborted();
             for (const entry of entries) {
               const segments = [...job.segments, entry.name];
-              if (entry.kind === 'dir' && entry.link) {
+              if (!isPlainName(entry.name)) {
+                skipped.push({ path: entry.path, reason: 'Unsafe file name' });
+              } else if (entry.kind === 'dir' && entry.link) {
                 skipped.push({ path: entry.path, reason: 'Symbolic link to a folder' });
               } else if (entry.kind === 'other') {
                 skipped.push({ path: entry.path, reason: 'Not a regular file' });
@@ -217,6 +219,10 @@ export async function planTransfer(
     );
     const destPath = target.path.join(anchor, ...safe);
     const relative = safe.join('/');
+    if (destPath === anchor || !containsPath(target, anchor, destPath)) {
+      skipped.push({ path: entry.path, reason: 'Unsafe file name' });
+      continue;
+    }
     if (seen.has(destPath)) {
       skipped.push({ path: entry.path, reason: 'Another selected item has the same name' });
       continue;

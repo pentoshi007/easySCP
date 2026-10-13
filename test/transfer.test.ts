@@ -384,6 +384,35 @@ describe('planning', () => {
     expect(await readFile(real('fresh-folder', 'solo.txt'), 'utf8')).toBe('solo');
   });
 
+  it('never writes outside the destination for hostile names', async () => {
+    const hostileDir = path.join(local, 'hostile');
+    await mkdir(hostileDir);
+    await writeFile(path.join(hostileDir, 'ok.txt'), 'fine');
+    const hostile: FileSystem = Object.assign(Object.create(localFs) as FileSystem, {
+      list: async (dir: string) => {
+        const entries = await localFs.list(dir);
+        if (dir !== hostileDir) return entries;
+        const [template] = entries;
+        return [
+          ...entries,
+          { ...template, name: '../../escape.txt' },
+          { ...template, name: '..' },
+          { ...template, name: 'a/b.txt' },
+        ];
+      },
+    });
+    const into = await tempDir();
+    const plan = await planTransfer({
+      source: hostile,
+      target: localFs,
+      sources: [hostileDir],
+      destination: into,
+    });
+    expect(plan.files.map((file) => file.relative)).toEqual(['hostile/ok.txt']);
+    expect(plan.skipped.filter((item) => item.reason === 'Unsafe file name')).toHaveLength(3);
+    for (const file of plan.files) expect(file.target.startsWith(into + path.sep)).toBe(true);
+  });
+
   it('refuses to copy a folder into itself', async () => {
     await mkdir(path.join(local, 'loop'));
     await expect(

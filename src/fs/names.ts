@@ -11,6 +11,12 @@ function replaceInvalid(name: string): string {
   return out;
 }
 
+export function isPlainName(name: string): boolean {
+  return (
+    name !== '' && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\0')
+  );
+}
+
 export function portableName(fs: FileSystem, name: string): string {
   if (!fs.local || process.platform !== 'win32') return name;
   let safe = replaceInvalid(name).replace(/[. ]+$/, '');
