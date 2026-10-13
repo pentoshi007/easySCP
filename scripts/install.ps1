@@ -87,7 +87,15 @@ function Install-Easyscp {
     }
     $main = Join-Path $installDir 'easyscp.exe'
     $alias = Join-Path $installDir 'escp.exe'
-    Move-Item -LiteralPath $exe -Destination $main
+    for ($attempt = 1; ; $attempt++) {
+    try {
+      Move-Item -LiteralPath $exe -Destination $main
+      break
+    } catch {
+      if ($attempt -ge 20) { throw }
+      Start-Sleep -Milliseconds 500
+    }
+  }
     try {
       New-Item -ItemType HardLink -Path $alias -Target $main | Out-Null
     } catch {
