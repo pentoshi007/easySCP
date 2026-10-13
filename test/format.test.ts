@@ -4,9 +4,19 @@ import {
   formatDuration,
   formatMode,
   formatRelative,
+  joinNames,
   printable,
   truncateMiddle,
 } from '../src/util/format.js';
+
+describe('joinNames', () => {
+  it('joins names like a sentence', () => {
+    expect(joinNames([])).toBe('');
+    expect(joinNames(['a'])).toBe('a');
+    expect(joinNames(['a', 'b', 'c'])).toBe('a, b and c');
+    expect(joinNames(['a', 'b', 'c', 'd', 'e', 'f'])).toBe('a, b, c and 3 more');
+  });
+});
 
 describe('formatBytes', () => {
   it('formats across units', () => {

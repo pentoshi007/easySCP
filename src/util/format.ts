@@ -62,6 +62,13 @@ export function formatMode(mode: number, isDirectory: boolean): string {
   return out;
 }
 
+export function joinNames(names: string[], limit = 4): string {
+  if (names.length <= 1) return names[0] ?? '';
+  if (names.length > limit)
+    return `${names.slice(0, limit - 1).join(', ')} and ${names.length - limit + 1} more`;
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }

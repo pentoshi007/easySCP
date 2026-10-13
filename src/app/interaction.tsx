@@ -16,14 +16,16 @@ export class UiInteraction implements Interaction {
   private task: TaskHandle | undefined;
   private label = '';
   private active = false;
+  private fixed = false;
 
   constructor(
     private readonly ui: Ui,
     private readonly options: { acceptNewHostKeys: boolean },
   ) {}
 
-  begin(label: string): void {
+  begin(label: string, options: { fixed?: boolean } = {}): void {
     this.active = true;
+    this.fixed = options.fixed === true;
     this.label = label;
     this.show();
   }
@@ -34,6 +36,7 @@ export class UiInteraction implements Interaction {
   }
 
   status(message: string): void {
+    if (this.fixed) return;
     this.label = message;
     if (this.task) this.task.update(this.view());
   }
