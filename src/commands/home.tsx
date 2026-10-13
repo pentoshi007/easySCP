@@ -174,7 +174,7 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
       {
         value: 'machines',
         label: 'Machines',
-        hint: hosts.length ? plural(hosts.length, 'saved') : 'add one',
+        hint: hosts.length ? `${hosts.length} saved` : 'add one',
       },
       { value: 'quit', label: 'Quit' },
     );
