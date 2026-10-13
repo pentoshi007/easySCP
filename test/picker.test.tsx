@@ -3,6 +3,7 @@ import path from 'node:path';
 import { render } from 'ink-testing-library';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { localFs } from '../src/fs/local.js';
+import type { FileSystem } from '../src/fs/types.js';
 import { Browser } from '../src/ui/picker/Browser.js';
 import { buildRows, splitQuery } from '../src/ui/picker/model.js';
 import { rankTop } from '../src/ui/picker/rank.js';
@@ -39,16 +40,36 @@ describe('rankTop', () => {
   });
 });
 
+const posixFs = { local: false, label: 'box', path: path.posix, home: '/home/me' } as FileSystem;
+const windowsFs = {
+  local: true,
+  label: 'local',
+  path: path.win32,
+  home: 'C:\\Users\\me',
+} as FileSystem;
+
 describe('picker model', () => {
   it('splits typed paths from filters', () => {
-    expect(splitQuery(localFs, '/srv', 'app')).toEqual({
+    expect(splitQuery(posixFs, '/srv', 'app')).toEqual({
       dir: '/srv',
       filter: 'app',
       typedPath: false,
     });
-    expect(splitQuery(localFs, '/srv', 'www/ht')).toMatchObject({ dir: '/srv/www', filter: 'ht' });
-    expect(splitQuery(localFs, '/srv', '/etc/')).toMatchObject({ dir: '/etc', filter: '' });
-    expect(splitQuery(localFs, '/srv', '~/').dir).toBe(localFs.home);
+    expect(splitQuery(posixFs, '/srv', 'www/ht')).toMatchObject({ dir: '/srv/www', filter: 'ht' });
+    expect(splitQuery(posixFs, '/srv', '/etc/')).toMatchObject({ dir: '/etc', filter: '' });
+    expect(splitQuery(posixFs, '/srv', '~/').dir).toBe('/home/me');
+  });
+
+  it('accepts both separators for local Windows paths', () => {
+    expect(splitQuery(windowsFs, 'C:\\srv', 'www\\ht')).toMatchObject({
+      dir: 'C:\\srv\\www',
+      filter: 'ht',
+    });
+    expect(splitQuery(windowsFs, 'C:\\srv', 'www/ht')).toMatchObject({
+      dir: 'C:\\srv\\www',
+      filter: 'ht',
+    });
+    expect(splitQuery(windowsFs, 'C:\\srv', '~\\')).toMatchObject({ dir: 'C:\\Users\\me' });
   });
 
   const entry = (name: string, kind: 'file' | 'dir') => ({
@@ -65,7 +86,7 @@ describe('picker model', () => {
   it('offers choose and create rows when picking folders', () => {
     const view = { dir: '/base', filter: '', typedPath: false };
     const rows = buildRows({
-      fs: localFs,
+      fs: posixFs,
       mode: 'dir',
       view,
       entries,
@@ -75,7 +96,7 @@ describe('picker model', () => {
     expect(rows.map((row) => row.kind)).toEqual(['here', 'entry', 'entry']);
 
     const filtered = buildRows({
-      fs: localFs,
+      fs: posixFs,
       mode: 'dir',
       view: { ...view, filter: 'newsite' },
       entries,
@@ -87,7 +108,7 @@ describe('picker model', () => {
 
   it('dims hidden entries', () => {
     const rows = buildRows({
-      fs: localFs,
+      fs: posixFs,
       mode: 'files',
       view: { dir: '/base', filter: '', typedPath: false },
       entries,

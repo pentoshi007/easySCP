@@ -12,6 +12,7 @@ import {
 } from '../src/browser/model.js';
 import { localFs } from '../src/fs/local.js';
 import type { Entry } from '../src/fs/types.js';
+import { symbols } from '../src/ui/theme.js';
 import { DOWN, ENTER, ESC, renderScreen, TAB, tick, waitFor } from './helpers/ink.js';
 import { tempDir } from './helpers/tmp.js';
 
@@ -129,7 +130,7 @@ describe('Explorer', () => {
     expect(frame).toContain('photos/');
     expect(frame).toContain('3 items');
     expect(frame).toContain('1 item');
-    expect(frame).toMatch(/photos · d/);
+    expect(frame).toContain(`photos ${symbols.dot} d`);
     for (const line of frame.split('\n')) expect(line.length).toBeLessThanOrEqual(100);
     expect(frame.split('\n').length).toBeLessThanOrEqual(24);
   });
