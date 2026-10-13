@@ -7,7 +7,7 @@ import {
 import { renderHelp } from '../cli/help.js';
 import { addCommand } from '../commands/add.js';
 import { browseCommand } from '../commands/browse.js';
-import { completionCommand } from '../commands/completion.js';
+import { completionCommand, describeInstalled } from '../commands/completion.js';
 import { copyCommand } from '../commands/copy.js';
 import { editCommand } from '../commands/edit.js';
 import { historyCommand } from '../commands/history.js';
@@ -18,7 +18,8 @@ import type { Outcome } from '../commands/outcome.js';
 import { removeCommand } from '../commands/remove.js';
 import { testCommand } from '../commands/test.js';
 import { transferCommand } from '../commands/transfer.js';
-import { shellNamed } from '../completion/detect.js';
+import { detectShell, shellNamed } from '../completion/detect.js';
+import { setUpCompletionAutomatically } from '../completion/install.js';
 import { completionScript, isShell } from '../completion/scripts.js';
 import { AppError, describeError, InterruptedError, wentBack } from '../core/errors.js';
 import { findHost, listHosts } from '../core/hosts.js';
@@ -173,6 +174,13 @@ export async function main(argv: string[]): Promise<number> {
   let code = 0;
   try {
     ui.intro(args.command ? TITLES[args.command.name] : args.word ? args.word : `v${__VERSION__}`);
+    if (ui.interactive && args.command?.name !== 'completion') {
+      const installed = await setUpCompletionAutomatically(detectShell).catch(() => undefined);
+      if (installed) {
+        const { message, detail } = describeInstalled(installed);
+        ui.note(`${message}. ${detail}`);
+      }
+    }
     const outcome = await dispatch(ctx, args);
     if (outcome) {
       if (ui.interactive) ui.outro(outcome.message, outcome.tone, outcome.detail);
