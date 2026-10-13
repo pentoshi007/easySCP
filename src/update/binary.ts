@@ -9,6 +9,7 @@ import type { ReadableStream } from 'node:stream/web';
 import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { AppError } from '../core/errors.js';
+import { renameWithRetry } from '../core/store.js';
 import type { Release } from './release.js';
 
 const run = promisify(execFile);
@@ -158,11 +159,11 @@ export async function replaceExecutable(
   if (platform === 'win32') {
     const retired = retiredPath(executable);
     await rm(retired, { force: true });
-    await rename(executable, retired);
+    await renameWithRetry(executable, retired, 10);
     try {
-      await rename(next, executable);
+      await renameWithRetry(next, executable, 10);
     } catch (error) {
-      await rename(retired, executable);
+      await renameWithRetry(retired, executable, 10);
       throw error;
     }
   } else {

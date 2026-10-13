@@ -32,15 +32,15 @@ export async function writeFileAtomic(file: string, data: string | Uint8Array): 
   }
 }
 
-async function renameWithRetry(from: string, to: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
+export async function renameWithRetry(from: string, to: string, attempts = 6): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
     try {
       await rename(from, to);
       return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       const transient = code === 'EPERM' || code === 'EACCES' || code === 'EBUSY';
-      if (!transient || attempt >= 5) throw error;
+      if (!transient || attempt >= attempts) throw error;
       await sleep(20 * 2 ** attempt);
     }
   }
