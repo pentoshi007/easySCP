@@ -103,7 +103,7 @@ async function collectBlocks(file: string, depth: number, blocks: Block[]): Prom
 }
 
 function expandTokens(value: string, alias: string, hostname: string, user: string): string {
-  return expandHome(
+  const expanded = expandHome(
     value.replace(/%([%dhunr])/g, (_, token: string) => {
       switch (token) {
         case '%':
@@ -121,6 +121,7 @@ function expandTokens(value: string, alias: string, hostname: string, user: stri
       }
     }),
   );
+  return path.normalize(expanded);
 }
 
 function resolve(alias: string, blocks: Block[]): SshConfigHost {
