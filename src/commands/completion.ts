@@ -8,34 +8,38 @@ export function isShell(value: string | undefined): value is Shell {
 }
 
 const HOST_COMMANDS = ['send', 'receive', 'browse', 'edit', 'remove', 'test'];
+const MACHINES_COMMANDS = ['copy'];
 
-function commandWords(): string[] {
-  return COMMANDS.flatMap((command) => [command.name, ...command.aliases]);
-}
-
-function hostCommandWords(): string[] {
-  return COMMANDS.filter((command) => HOST_COMMANDS.includes(command.name)).flatMap((command) => [
+function wordsFor(names?: string[]): string[] {
+  return COMMANDS.filter((command) => !names || names.includes(command.name)).flatMap((command) => [
     command.name,
     ...command.aliases,
   ]);
 }
 
+const quoted = (words: string[]) => words.map((word) => `'${word}'`).join(', ');
+
 export function completionScript(shell: Shell): string {
-  const commands = commandWords().join(' ');
-  const hostCommands = hostCommandWords().join('|');
+  const commands = wordsFor().join(' ');
+  const hostCommands = wordsFor(HOST_COMMANDS).join('|');
+  const machinesCommands = wordsFor(MACHINES_COMMANDS).join('|');
   switch (shell) {
     case 'bash':
       return `_easyscp() {
   local cur="\${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=($(compgen -W "${commands} $(easyscp __hosts 2>/dev/null)" -- "$cur"))
-  elif [ "$COMP_CWORD" -eq 2 ]; then
+  else
     case "\${COMP_WORDS[1]}" in
-      ${hostCommands}) COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur")) ;;
+      ${machinesCommands}) COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur")) ;;
+      ${hostCommands})
+        if [ "$COMP_CWORD" -eq 2 ]; then
+          COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur"))
+        else
+          COMPREPLY=($(compgen -f -- "$cur"))
+        fi ;;
       *) COMPREPLY=($(compgen -f -- "$cur")) ;;
     esac
-  else
-    COMPREPLY=($(compgen -f -- "$cur"))
   fi
 }
 complete -o default -F _easyscp easyscp escp
@@ -47,6 +51,8 @@ _easyscp() {
   hosts=(\${(f)"$(easyscp __hosts 2>/dev/null)"})
   if (( CURRENT == 2 )); then
     compadd -- ${commands} $hosts
+  elif [[ "\${words[2]}" == (${machinesCommands}) ]]; then
+    compadd -- $hosts
   elif (( CURRENT == 3 )) && [[ "\${words[2]}" == (${hostCommands}) ]]; then
     compadd -- $hosts
   else
@@ -66,7 +72,8 @@ end
 for cmd in easyscp escp
     complete -c $cmd -f -n "__fish_is_nth_token 1" -a "${commands}"
     complete -c $cmd -f -n "__fish_is_nth_token 1" -a "(__easyscp_hosts)"
-    complete -c $cmd -f -n "__fish_is_nth_token 2; and __fish_seen_subcommand_from ${hostCommandWords().join(' ')}" -a "(__easyscp_hosts)"
+    complete -c $cmd -f -n "__fish_is_nth_token 2; and __fish_seen_subcommand_from ${wordsFor(HOST_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"
+    complete -c $cmd -f -n "__fish_seen_subcommand_from ${wordsFor(MACHINES_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"
 end
 `;
     case 'powershell':
@@ -77,12 +84,10 @@ end
   if ($wordToComplete -ne '') { $position -= 1 }
   $candidates = @()
   if ($position -le 1) {
-    $candidates = @(${commandWords()
-      .map((word) => `'${word}'`)
-      .join(', ')}) + @(easyscp __hosts 2>$null)
-  } elseif ($position -eq 2 -and @(${hostCommandWords()
-    .map((word) => `'${word}'`)
-    .join(', ')}) -contains $words[1]) {
+    $candidates = @(${quoted(wordsFor())}) + @(easyscp __hosts 2>$null)
+  } elseif (@(${quoted(wordsFor(MACHINES_COMMANDS))}) -contains $words[1]) {
+    $candidates = @(easyscp __hosts 2>$null)
+  } elseif ($position -eq 2 -and @(${quoted(wordsFor(HOST_COMMANDS))}) -contains $words[1]) {
     $candidates = @(easyscp __hosts 2>$null)
   } else {
     return

@@ -105,6 +105,7 @@ describe('help and completion', () => {
       const script = completionScript(shell);
       expect(script).toContain('__hosts');
       expect(script).toContain('receive');
+      expect(script).toMatch(/copy.+cp.+relay/);
     }
   });
 });
