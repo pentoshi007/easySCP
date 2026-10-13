@@ -31,6 +31,13 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      - name: Install an OpenSSH server for end-to-end tests
+        if: runner.os == 'Linux'
+        run: |
+          if [ ! -x /usr/sbin/sshd ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends openssh-server
+          fi
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run lint
