@@ -1,6 +1,6 @@
 import { COMMANDS } from '../cli/args.js';
 
-const SHELLS = ['bash', 'zsh', 'fish', 'powershell'] as const;
+export const SHELLS = ['bash', 'zsh', 'fish', 'powershell'] as const;
 export type Shell = (typeof SHELLS)[number];
 
 export function isShell(value: string | undefined): value is Shell {
@@ -70,6 +70,7 @@ fi
     easyscp __hosts 2>/dev/null
 end
 for cmd in easyscp escp
+    complete -c $cmd -e
     complete -c $cmd -f -n "__fish_is_nth_token 1" -a "${commands}"
     complete -c $cmd -f -n "__fish_is_nth_token 1" -a "(__easyscp_hosts)"
     complete -c $cmd -f -n "__fish_is_nth_token 2; and __fish_seen_subcommand_from ${wordsFor(HOST_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"

@@ -136,8 +136,8 @@ export const COMMANDS: CommandInfo[] = [
   {
     name: 'completion',
     aliases: [],
-    args: '<bash|zsh|fish|powershell>',
-    summary: 'Print a shell completion script',
+    args: '[install|uninstall|bash|zsh|fish|powershell] [shell]',
+    summary: 'Set up tab completion, or print a completion script',
     group: 'Other',
     flags: [],
   },

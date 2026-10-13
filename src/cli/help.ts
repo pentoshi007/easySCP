@@ -48,6 +48,11 @@ const EXAMPLES: Record<string, string[]> = {
   ],
   browse: ['easyscp browse prod                 copy, rename and delete on both sides'],
   add: ['easyscp add', 'easyscp add deploy@203.0.113.7:2222'],
+  completion: [
+    'easyscp completion install          set up tab completion for this shell',
+    'easyscp completion uninstall        remove it from every shell',
+    'easyscp completion zsh              print the zsh script',
+  ],
 };
 
 function table(rows: [string, string][], style: Style, minWidth = 0): string[] {

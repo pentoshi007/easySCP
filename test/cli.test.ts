@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { main } from '../src/app/main.js';
@@ -95,6 +96,24 @@ describe('cli', () => {
     expect(output).toBe('');
     expect(errors).toMatch(/Could not connect to down: Connection refused/);
     expect(errors).toMatch(/Is the SSH server running/);
+  });
+
+  it('sets up and removes tab completion', async () => {
+    const home = await tempDir('easyscp-user-');
+    vi.spyOn(os, 'homedir').mockReturnValue(home);
+    vi.stubEnv('ZDOTDIR', '');
+    vi.stubEnv('XDG_CONFIG_HOME', path.join(home, '.config'));
+    const zshrc = path.join(home, '.zshrc');
+    expect(await main(['completion', 'install', 'zsh'])).toBe(0);
+    expect(output).toMatch(/Tab completion is ready for zsh \(Added to ~.\.zshrc/);
+    expect(await readFile(zshrc, 'utf8')).toContain('easyscp.zsh');
+    expect(await main(['completion', 'uninstall'])).toBe(0);
+    expect(output).toMatch(/Removed tab completion/);
+    expect(await readFile(zshrc, 'utf8')).toBe('');
+    expect(await main(['completion'])).toBe(2);
+    expect(await main(['completion', 'install', 'tcsh'])).toBe(2);
+    expect(await main(['completion', 'fish'])).toBe(0);
+    expect(output).toContain('complete -c $cmd');
   });
 
   it('lists machine names for shell completion', async () => {

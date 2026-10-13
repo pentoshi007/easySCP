@@ -7,6 +7,7 @@ import {
 import { renderHelp } from '../cli/help.js';
 import { addCommand } from '../commands/add.js';
 import { browseCommand } from '../commands/browse.js';
+import { completionCommand } from '../commands/completion.js';
 import { copyCommand } from '../commands/copy.js';
 import { editCommand } from '../commands/edit.js';
 import { historyCommand } from '../commands/history.js';
@@ -17,6 +18,7 @@ import type { Outcome } from '../commands/outcome.js';
 import { removeCommand } from '../commands/remove.js';
 import { testCommand } from '../commands/test.js';
 import { transferCommand } from '../commands/transfer.js';
+import { shellNamed } from '../completion/detect.js';
 import { completionScript, isShell } from '../completion/scripts.js';
 import { AppError, describeError, InterruptedError, wentBack } from '../core/errors.js';
 import { findHost, listHosts } from '../core/hosts.js';
@@ -39,10 +41,7 @@ const TITLES: Record<CommandName, string> = {
   completion: 'shell completion',
 };
 
-const HANDLERS: Record<
-  Exclude<CommandName, 'completion'>,
-  (ctx: Context) => Promise<Outcome | undefined>
-> = {
+const HANDLERS: Record<CommandName, (ctx: Context) => Promise<Outcome | undefined>> = {
   send: (ctx) => transferCommand(ctx, 'upload'),
   receive: (ctx) => transferCommand(ctx, 'download'),
   copy: copyCommand,
@@ -54,6 +53,7 @@ const HANDLERS: Record<
   test: testCommand,
   import: importCommand,
   history: historyCommand,
+  completion: completionCommand,
 };
 
 function writeError(message: string, hint?: string): void {
@@ -100,7 +100,7 @@ async function runHidden(word: string): Promise<number | undefined> {
 
 async function dispatch(ctx: Context, args: ParsedArgs): Promise<Outcome | undefined> {
   if (args.command) {
-    return HANDLERS[args.command.name as Exclude<CommandName, 'completion'>](ctx);
+    return HANDLERS[args.command.name](ctx);
   }
   if (args.word) {
     const host = await findHost(args.word);
@@ -136,16 +136,20 @@ export async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (args.command?.name === 'completion') {
-    const [shell] = args.positionals;
-    if (!isShell(shell)) {
+    const [action, shell] = args.positionals;
+    if (isShell(action) && shell === undefined) {
+      process.stdout.write(completionScript(action));
+      return 0;
+    }
+    const known = action === 'install' || action === 'uninstall';
+    const chosen = action === undefined ? process.stdin.isTTY && process.stdout.isTTY : known;
+    if (!chosen || (shell !== undefined && !shellNamed(shell))) {
       writeError(
-        'Choose a shell: bash, zsh, fish or powershell',
-        'Example: easyscp completion zsh >> ~/.zshrc',
+        known ? 'Choose a shell: bash, zsh, fish or powershell' : 'Choose what to do',
+        'Run `easyscp completion install` to set it up, or `easyscp completion zsh` to print the script.',
       );
       return 2;
     }
-    process.stdout.write(completionScript(shell));
-    return 0;
   }
   if (args.word && !args.command) {
     const host = await findHost(args.word).catch(() => undefined);
