@@ -95,20 +95,23 @@ export class Session {
 
   execLines(command: string, options: StreamExecOptions): Promise<number | null> {
     let pending = '';
+    let stopped = false;
     return this.run(command, options.signal, (stream) => {
       stream.setEncoding('utf8');
       stream.on('data', (chunk: string) => {
+        if (stopped) return;
         const lines = (pending + chunk).split('\n');
         pending = lines.pop() ?? '';
         for (const line of lines) {
           if (options.onLine(line) === false) {
+            stopped = true;
             stream.close();
             return;
           }
         }
       });
       stream.on('end', () => {
-        if (pending) options.onLine(pending);
+        if (pending && !stopped) options.onLine(pending);
       });
       stream.stderr.resume();
     });
