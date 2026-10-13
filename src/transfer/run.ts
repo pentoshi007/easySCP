@@ -41,6 +41,7 @@ export interface TransferResult {
   bytes: number;
   durationMs: number;
   keptPartials: number;
+  lost?: 'source' | 'target';
   error?: ErrorReport;
 }
 
@@ -48,6 +49,7 @@ export interface RunOptions {
   policy?: ConflictPolicy;
   signal?: AbortSignal;
   onProgress?: (progress: TransferProgress) => void;
+  onFileDone?: (file: PlannedFile) => void;
   concurrency?: number;
 }
 
@@ -97,6 +99,10 @@ function resolveTasks(
     }
   }
   return { tasks, skipped };
+}
+
+export function pendingFiles(plan: TransferPlan, policy: ConflictPolicy): PlannedFile[] {
+  return resolveTasks(plan, policy).tasks.map((task) => task.file);
 }
 
 function pipelineShape(a: FileSystem, b: FileSystem): { chunk: number; parallel: number } {
@@ -248,6 +254,7 @@ export async function runTransfer(
   let doneFiles = 0;
   let keptPartials = 0;
   let fatal: unknown;
+  let lost: TransferResult['lost'];
   let lastSnapshot = '';
 
   const totalBytes = tasks.reduce((sum, task) => sum + task.file.size, 0);
@@ -332,6 +339,7 @@ export async function runTransfer(
       }
       if (!direct) await target.rename(work, finalPath);
       doneFiles++;
+      options.onFileDone?.(file);
     } catch (error) {
       doneBytes -= offset + written;
       const keep = internal.signal.aborted && offset + written >= KEEP_PARTIAL;
@@ -362,10 +370,10 @@ export async function runTransfer(
         } catch (error) {
           if (internal.signal.aborted || isCancelled(error)) return;
           if (source.closed || target.closed) {
-            const lost = source.closed ? source : target;
+            lost = source.closed ? 'source' : 'target';
             markFatal(
               new AppError(
-                `Connection to ${lost.label} was lost`,
+                `Connection to ${(source.closed ? source : target).label} was lost`,
                 'Run the same transfer again to resume where it stopped.',
               ),
             );
@@ -404,6 +412,7 @@ export async function runTransfer(
   else if (fatal !== undefined) {
     result.status = 'failed';
     result.error = describeError(fatal);
+    if (lost) result.lost = lost;
   } else if (failed.length > 0) {
     result.status = doneFiles > 0 ? 'partial' : 'failed';
   }

@@ -15,6 +15,19 @@ export function appDir(): string {
   return path.join(configHome, 'easyscp');
 }
 
+export function cacheDir(): string {
+  const override = process.env.EASYSCP_HOME;
+  if (override) return path.join(path.resolve(override), 'cache');
+  const home = os.homedir();
+  if (process.platform === 'win32') {
+    const local = process.env.LOCALAPPDATA ?? path.join(home, 'AppData', 'Local');
+    return path.join(local, 'easyscp', 'cache');
+  }
+  if (process.platform === 'darwin') return path.join(home, 'Library', 'Caches', 'easyscp');
+  const xdg = process.env.XDG_CACHE_HOME;
+  return path.join(xdg && path.isAbsolute(xdg) ? xdg : path.join(home, '.cache'), 'easyscp');
+}
+
 export function appFile(name: string): string {
   return path.join(appDir(), name);
 }
