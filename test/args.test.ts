@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { findCommand, parseCommandLine, suggestCommand } from '../src/cli/args.js';
 import { renderHelp } from '../src/cli/help.js';
-import { completionScript } from '../src/commands/completion.js';
 import { parseCopyTokens } from '../src/commands/copyArgs.js';
+import { completionScript } from '../src/completion/scripts.js';
 import type { Host } from '../src/core/hosts.js';
 import { colorsDisabled } from '../src/ui/theme.js';
 

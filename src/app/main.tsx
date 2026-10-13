@@ -7,7 +7,6 @@ import {
 import { renderHelp } from '../cli/help.js';
 import { addCommand } from '../commands/add.js';
 import { browseCommand } from '../commands/browse.js';
-import { completionScript, isShell } from '../commands/completion.js';
 import { copyCommand } from '../commands/copy.js';
 import { editCommand } from '../commands/edit.js';
 import { historyCommand } from '../commands/history.js';
@@ -18,6 +17,7 @@ import type { Outcome } from '../commands/outcome.js';
 import { removeCommand } from '../commands/remove.js';
 import { testCommand } from '../commands/test.js';
 import { transferCommand } from '../commands/transfer.js';
+import { completionScript, isShell } from '../completion/scripts.js';
 import { AppError, describeError, InterruptedError, wentBack } from '../core/errors.js';
 import { findHost, listHosts } from '../core/hosts.js';
 import { streamColors } from '../ui/theme.js';
