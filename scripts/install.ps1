@@ -78,24 +78,32 @@ function Install-Easyscp {
     if ($LASTEXITCODE -ne 0 -or -not $installed) { Fail "the downloaded easyscp doesn't run on this computer" }
 
     New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-    foreach ($name in 'easyscp.exe', 'escp.exe') {
-      $target = Join-Path $installDir $name
+    $main = Join-Path $installDir 'easyscp.exe'
+    $alias = Join-Path $installDir 'escp.exe'
+    $retired = @()
+    foreach ($target in $main, $alias) {
       if (Test-Path -LiteralPath $target) {
         Remove-Item -LiteralPath "$target.old" -Force -ErrorAction SilentlyContinue
         Move-Item -LiteralPath $target -Destination "$target.old" -Force
+        $retired += $target
       }
     }
-    $main = Join-Path $installDir 'easyscp.exe'
-    $alias = Join-Path $installDir 'escp.exe'
-    for ($attempt = 1; ; $attempt++) {
     try {
-      Move-Item -LiteralPath $exe -Destination $main
-      break
+      for ($attempt = 1; ; $attempt++) {
+        try {
+          Move-Item -LiteralPath $exe -Destination $main
+          break
+        } catch {
+          if ($attempt -ge 20) { throw }
+          Start-Sleep -Milliseconds 500
+        }
+      }
     } catch {
-      if ($attempt -ge 20) { throw }
-      Start-Sleep -Milliseconds 500
+      foreach ($target in $retired) {
+        Move-Item -LiteralPath "$target.old" -Destination $target -Force -ErrorAction SilentlyContinue
+      }
+      Fail "couldn't install into $installDir ($($_.Exception.Message))"
     }
-  }
     try {
       New-Item -ItemType HardLink -Path $alias -Target $main | Out-Null
     } catch {
