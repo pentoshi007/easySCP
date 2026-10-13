@@ -1,6 +1,7 @@
 import { AppError } from '../core/errors.js';
 
 export const REPOSITORY = 'pentoshi007/easySCP';
+export const NPM_PACKAGE = '@pentoshi/easyscp';
 
 export interface Release {
   version: string;

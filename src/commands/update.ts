@@ -15,6 +15,7 @@ import {
   binaryAssetName,
   compareVersions,
   latestRelease,
+  NPM_PACKAGE,
   type Release,
 } from '../update/release.js';
 import { formatBytes } from '../util/format.js';
@@ -53,7 +54,7 @@ function runTool(tool: keyof typeof TOOL_NAMES, args: string[], signal: AbortSig
         new AppError(
           `${TOOL_NAMES[tool]} couldn't update easyscp`,
           permission && tool === 'npm'
-            ? 'Your global npm folder needs admin rights. Run `sudo npm install -g easyscp@latest`.'
+            ? `Your global npm folder needs admin rights. Run \`sudo npm install -g ${NPM_PACKAGE}@latest\`.`
             : lastLines(output) || undefined,
         ),
       );
@@ -108,7 +109,7 @@ async function apply(ctx: Context, method: InstallMethod, release: Release): Pro
   switch (method.kind) {
     case 'npm':
       return ui.spin(`Installing easyscp ${release.version} with npm`, () =>
-        runTool('npm', ['install', '--global', `easyscp@${release.version}`], ui.signal),
+        runTool('npm', ['install', '--global', `${NPM_PACKAGE}@${release.version}`], ui.signal),
       );
     case 'homebrew':
       await ui.spin('Updating Homebrew', () => runTool('brew', ['update', '--quiet'], ui.signal));
@@ -120,7 +121,7 @@ async function apply(ctx: Context, method: InstallMethod, release: Release): Pro
     case 'source':
       throw new AppError(
         `easyscp ${release.version} is available`,
-        'This copy was built from source. Run `git pull && npm ci && npm run build` in its folder, or install the release with `npm install -g easyscp`.',
+        `This copy was built from source. Run \`git pull && npm ci && npm run build\` in its folder, or install the release with \`npm install -g ${NPM_PACKAGE}\`.`,
       );
   }
 }

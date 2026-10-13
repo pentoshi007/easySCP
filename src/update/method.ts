@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { isSea } from 'node:sea';
+import { NPM_PACKAGE } from './release.js';
 
 export type InstallMethod =
   | { kind: 'binary'; executable: string }
@@ -33,6 +34,6 @@ export function installMethod(facts: InstallFacts = currentInstall()): InstallMe
   const location = (facts.sea ? facts.executable : (facts.script ?? '')).replaceAll('\\', '/');
   if (location.includes('/Cellar/easyscp/')) return { kind: 'homebrew' };
   if (facts.sea) return { kind: 'binary', executable: facts.executable };
-  if (/\/node_modules\/easyscp\//i.test(location)) return { kind: 'npm' };
+  if (location.toLowerCase().includes(`/node_modules/${NPM_PACKAGE}/`)) return { kind: 'npm' };
   return { kind: 'source' };
 }

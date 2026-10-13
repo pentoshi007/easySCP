@@ -17,7 +17,7 @@ irm https://github.com/pentoshi007/easySCP/releases/latest/download/install.ps1 
 brew install pentoshi007/tap/easyscp
 
 # npm (Node.js 22 or newer)
-npm install -g easyscp
+npm install -g @pentoshi/easyscp
 ```
 
 The install scripts download a standalone binary that needs nothing else, check it against the release checksums, put it on your `PATH` and set up tab completion. Set `EASYSCP_INSTALL_DIR` to choose the folder or `EASYSCP_VERSION` to pin a version. You can also download the binaries for x64 and arm64 from the [releases page](https://github.com/pentoshi007/easySCP/releases).

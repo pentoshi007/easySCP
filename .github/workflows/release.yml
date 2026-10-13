@@ -216,8 +216,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if npm view "easyscp@$VERSION" version > /dev/null 2>&1; then
-            echo "easyscp $VERSION is already on npm"
+          if npm view "@pentoshi/easyscp@$VERSION" version > /dev/null 2>&1; then
+            echo "@pentoshi/easyscp $VERSION is already on npm"
           elif [ "$PRERELEASE" = true ]; then
             npm publish --provenance --access public --tag next
           else

@@ -1,5 +1,5 @@
 {
-  "name": "easyscp",
+  "name": "@pentoshi/easyscp",
   "version": "0.1.0",
   "description": "Friendly, fast file transfers over SSH — right from your terminal",
   "keywords": [

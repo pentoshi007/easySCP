@@ -80,10 +80,15 @@ describe('installMethod', () => {
     });
     expect(
       installMethod(
-        facts(false, 'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\easyscp\\dist\\cli.js'),
+        facts(
+          false,
+          'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@pentoshi\\easyscp\\dist\\cli.js',
+        ),
       ),
     ).toEqual({ kind: 'npm' });
-    expect(installMethod(facts(false, '/usr/lib/node_modules/easyscp/dist/cli.js'))).toEqual({
+    expect(
+      installMethod(facts(false, '/usr/lib/node_modules/@pentoshi/easyscp/dist/cli.js')),
+    ).toEqual({
       kind: 'npm',
     });
     expect(installMethod(facts(false, '/home/me/src/easySCP/dist/cli.js'))).toEqual({

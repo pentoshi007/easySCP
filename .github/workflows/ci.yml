@@ -52,6 +52,6 @@ jobs:
         shell: bash
         run: |
           npm pack --ignore-scripts
-          npm install --global --ignore-scripts ./easyscp-*.tgz
+          npm install --global --ignore-scripts ./pentoshi-easyscp-*.tgz
           easyscp --version
           escp --help

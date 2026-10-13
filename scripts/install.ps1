@@ -18,7 +18,7 @@ function Install-Easyscp {
   $arch = switch ($architecture) {
     { $_ -in 'X64', 'AMD64' } { 'x64' }
     { $_ -in 'Arm64', 'ARM64' } { 'arm64' }
-    default { Fail "there is no standalone easyscp for $architecture. Install it with npm: npm install -g easyscp" }
+    default { Fail "there is no standalone easyscp for $architecture. Install it with npm: npm install -g @pentoshi/easyscp" }
   }
 
   $base = if ($env:EASYSCP_DOWNLOAD_BASE) {

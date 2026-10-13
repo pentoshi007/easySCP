@@ -46,7 +46,7 @@ main() {
   case "$(uname -m)" in
     x86_64 | amd64) arch=x64 ;;
     arm64 | aarch64) arch=arm64 ;;
-    *) fail "there is no standalone easyscp for $(uname -m). Install it with npm: npm install -g easyscp" ;;
+    *) fail "there is no standalone easyscp for $(uname -m). Install it with npm: npm install -g @pentoshi/easyscp" ;;
   esac
 
   if [ "$os" = darwin ] && [ "$arch" = x64 ] && [ "$(sysctl -in sysctl.proc_translated 2>/dev/null)" = 1 ]; then
@@ -54,7 +54,7 @@ main() {
   fi
 
   if [ "$os" = linux ] && { ldd --version 2>&1 || true; } | grep -qi musl; then
-    fail "the standalone easyscp needs glibc, which this system doesn't use. Install it with npm: npm install -g easyscp"
+    fail "the standalone easyscp needs glibc, which this system doesn't use. Install it with npm: npm install -g @pentoshi/easyscp"
   fi
 
   if [ -n "${EASYSCP_DOWNLOAD_BASE:-}" ]; then

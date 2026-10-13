@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { AppError } from '../core/errors.js';
 import { renameWithRetry } from '../core/store.js';
-import type { Release } from './release.js';
+import { NPM_PACKAGE, type Release } from './release.js';
 
 const run = promisify(execFile);
 
@@ -56,7 +56,7 @@ function assetUrl(release: Release, name: string): string {
   if (!url) {
     throw new AppError(
       `easyscp ${release.version} has no download for this computer (${name})`,
-      'Install it with npm instead: `npm install -g easyscp`.',
+      `Install it with npm instead: \`npm install -g ${NPM_PACKAGE}\`.`,
     );
   }
   return url;
