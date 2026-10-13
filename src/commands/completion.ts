@@ -53,7 +53,11 @@ _easyscp() {
     _files
   fi
 }
-compdef _easyscp easyscp escp
+if [[ "\${funcstack[1]}" == _easyscp ]]; then
+  _easyscp "$@"
+else
+  compdef _easyscp easyscp escp
+fi
 `;
     case 'fish':
       return `function __easyscp_hosts
