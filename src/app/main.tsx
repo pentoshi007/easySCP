@@ -18,6 +18,7 @@ import type { Outcome } from '../commands/outcome.js';
 import { removeCommand } from '../commands/remove.js';
 import { testCommand } from '../commands/test.js';
 import { transferCommand } from '../commands/transfer.js';
+import { updateCommand } from '../commands/update.js';
 import { detectShell, shellNamed } from '../completion/detect.js';
 import { setUpCompletionAutomatically } from '../completion/install.js';
 import { completionScript, isShell } from '../completion/scripts.js';
@@ -25,6 +26,9 @@ import { AppError, describeError, InterruptedError, wentBack } from '../core/err
 import { findHost, listHosts } from '../core/hosts.js';
 import { streamColors } from '../ui/theme.js';
 import { Ui } from '../ui/ui.js';
+import { removeRetiredExecutable } from '../update/binary.js';
+import { availableUpdate, checkForUpdate, updateChecksAllowed } from '../update/check.js';
+import { installMethod } from '../update/method.js';
 import { type Context, createContext } from './context.js';
 
 const TITLES: Record<CommandName, string> = {
@@ -40,6 +44,7 @@ const TITLES: Record<CommandName, string> = {
   import: 'import from ssh config',
   history: 'recent transfers',
   completion: 'shell completion',
+  update: 'update',
 };
 
 const HANDLERS: Record<CommandName, (ctx: Context) => Promise<Outcome | undefined>> = {
@@ -55,6 +60,7 @@ const HANDLERS: Record<CommandName, (ctx: Context) => Promise<Outcome | undefine
   import: importCommand,
   history: historyCommand,
   completion: completionCommand,
+  update: updateCommand,
 };
 
 function writeError(message: string, hint?: string): void {
@@ -180,6 +186,15 @@ export async function main(argv: string[]): Promise<number> {
         const { message, detail } = describeInstalled(installed);
         ui.note(`${message}. ${detail}`);
       }
+    }
+    if (ui.interactive && updateChecksAllowed() && args.command?.name !== 'update') {
+      const latest = await availableUpdate().catch(() => undefined);
+      if (latest) ui.note(`easyscp ${latest} is available. Run \`easyscp update\` to get it.`);
+      checkForUpdate().catch(() => undefined);
+    }
+    if (process.platform === 'win32') {
+      const method = installMethod();
+      if (method.kind === 'binary') await removeRetiredExecutable(method.executable);
     }
     const outcome = await dispatch(ctx, args);
     if (outcome) {

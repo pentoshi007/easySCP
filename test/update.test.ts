@@ -3,6 +3,7 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { main } from '../src/app/main.js';
 import { updateState } from '../src/core/state.js';
 import {
   downloadBinary,
@@ -206,5 +207,37 @@ describe('binary updates', () => {
     expect(await readFile(executable, 'utf8')).toBe('new');
     await expect(stat(next)).rejects.toThrow();
     if (platform === 'win32') expect(await readFile(retiredPath(executable), 'utf8')).toBe('old');
+  });
+});
+
+describe('update command', () => {
+  let output: string;
+  let errors: string;
+
+  beforeEach(() => {
+    output = '';
+    errors = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      output += String(chunk);
+      return true;
+    });
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      errors += String(chunk);
+      return true;
+    });
+  });
+
+  it('says when easyscp is up to date', async () => {
+    vi.stubGlobal('fetch', routes({ [API]: json({ tag_name: 'v0.0.0-test', assets: [] }) }));
+    expect(await main(['update'])).toBe(0);
+    expect(output).toMatch(/easyscp 0.0.0-test is up to date/);
+  });
+
+  it('explains how to update a copy built from source', async () => {
+    vi.stubGlobal('fetch', routes({ [API]: json({ tag_name: 'v0.3.0', assets: [] }) }));
+    expect(await main(['upgrade'])).toBe(1);
+    expect(errors).toMatch(/easyscp 0.3.0 is available/);
+    expect(errors).toMatch(/git pull/);
+    expect((await updateState()).latest).toBe('0.3.0');
   });
 });

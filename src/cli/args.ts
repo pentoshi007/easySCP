@@ -14,7 +14,8 @@ export type CommandName =
   | 'test'
   | 'import'
   | 'history'
-  | 'completion';
+  | 'completion'
+  | 'update';
 
 export interface CommandInfo {
   name: CommandName;
@@ -138,6 +139,14 @@ export const COMMANDS: CommandInfo[] = [
     aliases: [],
     args: '[install|uninstall|bash|zsh|fish|powershell] [shell]',
     summary: 'Set up tab completion, or print a completion script',
+    group: 'Other',
+    flags: [],
+  },
+  {
+    name: 'update',
+    aliases: ['upgrade'],
+    args: '',
+    summary: 'Update easyscp to the latest release',
     group: 'Other',
     flags: [],
   },
