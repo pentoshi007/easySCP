@@ -6,6 +6,7 @@ export default defineConfig({
     include: ['test/**/*.test.{ts,tsx}'],
     restoreMocks: true,
     unstubEnvs: true,
+    unstubGlobals: true,
     testTimeout: 20_000,
     hookTimeout: 20_000,
   },

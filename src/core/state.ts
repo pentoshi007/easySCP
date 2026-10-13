@@ -10,11 +10,17 @@ export interface CompletionState {
   disabled: boolean;
 }
 
+export interface UpdateState {
+  checkedAt: number;
+  latest: string;
+}
+
 interface StateFile {
   version: 1;
   recentRemote: Record<string, string[]>;
   recentLocal: string[];
   completion: CompletionState;
+  update: UpdateState;
 }
 
 function stringList(value: unknown): string[] {
@@ -31,6 +37,14 @@ function listRecord(value: unknown): Record<string, string[]> {
 
 function emptyCompletion(): CompletionState {
   return { version: '', shells: [], profiles: {}, disabled: false };
+}
+
+function normalizeUpdate(value: unknown): UpdateState {
+  const raw = (value ?? {}) as Partial<UpdateState>;
+  return {
+    checkedAt: typeof raw.checkedAt === 'number' ? raw.checkedAt : 0,
+    latest: typeof raw.latest === 'string' ? raw.latest : '',
+  };
 }
 
 function normalizeCompletion(value: unknown): CompletionState {
@@ -51,6 +65,7 @@ const store = new JsonStore<StateFile>({
     recentRemote: {},
     recentLocal: [],
     completion: emptyCompletion(),
+    update: normalizeUpdate(undefined),
   }),
   normalize: (raw) => {
     const value = (raw ?? {}) as Partial<StateFile>;
@@ -59,6 +74,7 @@ const store = new JsonStore<StateFile>({
       recentRemote: listRecord(value.recentRemote),
       recentLocal: stringList(value.recentLocal),
       completion: normalizeCompletion(value.completion),
+      update: normalizeUpdate(value.update),
     };
   },
 });
@@ -105,6 +121,17 @@ export async function updateCompletionState(
 ): Promise<void> {
   await store.update((state) => {
     state.completion = change(state.completion);
+    return state;
+  });
+}
+
+export async function updateState(): Promise<UpdateState> {
+  return (await store.read()).update;
+}
+
+export async function saveUpdateState(update: UpdateState): Promise<void> {
+  await store.update((state) => {
+    state.update = update;
     return state;
   });
 }
