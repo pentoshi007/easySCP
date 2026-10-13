@@ -20,7 +20,7 @@ const binary = (target) => {
 };
 
 process.stdout.write(`class Easyscp < Formula
-  desc "Friendly, fast file transfers over SSH"
+  desc "Send, receive and copy files over SSH by picking them, not typing paths"
   homepage "https://github.com/pentoshi007/easySCP"
   version "${version}"
   license "MIT"

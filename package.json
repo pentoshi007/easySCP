@@ -1,14 +1,18 @@
 {
   "name": "@pentoshi/easyscp",
   "version": "0.1.0",
-  "description": "Friendly, fast file transfers over SSH — right from your terminal",
+  "description": "Send, receive and copy files over SSH by picking them, not typing paths",
   "keywords": [
     "scp",
     "sftp",
     "ssh",
     "file-transfer",
     "cli",
-    "tui"
+    "tui",
+    "terminal",
+    "devops",
+    "file-manager",
+    "server-to-server"
   ],
   "license": "MIT",
   "author": "Aniket Pandey",
