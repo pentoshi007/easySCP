@@ -244,19 +244,29 @@ describe('download', () => {
 
 describe('resume', () => {
   it('continues from a matching partial file', async () => {
-    const data = randomBytes(3 * 1024 * 1024);
+    const data = randomBytes(9 * 1024 * 1024);
     await writeFile(real('resume.bin'), data);
-    await writeFile(path.join(local, partName('resume.bin')), data.subarray(0, 1024 * 1024));
+    await writeFile(path.join(local, partName('resume.bin')), data.subarray(0, 6 * 1024 * 1024));
 
     const { plan, result } = await transfer({
       up: false,
       sources: [remotePath('resume.bin')],
       destination: local,
     });
-    expect(plan.files[0]?.partial).toBe(1024 * 1024);
-    expect(result.bytes).toBe(2 * 1024 * 1024);
+    expect(plan.files[0]?.partial).toBe(6 * 1024 * 1024);
+    expect(result.bytes).toBe(7 * 1024 * 1024);
     expect(sha(await readFile(path.join(local, 'resume.bin')))).toBe(sha(data));
     expect(await readdir(local)).toEqual(['resume.bin']);
+  });
+
+  it('rewrites the tail of a partial file in case later chunks landed first', async () => {
+    const data = randomBytes(8 * 1024 * 1024);
+    const holey = Buffer.from(data.subarray(0, 7 * 1024 * 1024));
+    holey.fill(0, 5 * 1024 * 1024, 6 * 1024 * 1024);
+    await writeFile(real('holey.bin'), data);
+    await writeFile(path.join(local, partName('holey.bin')), holey);
+    await transfer({ up: false, sources: [remotePath('holey.bin')], destination: local });
+    expect(sha(await readFile(path.join(local, 'holey.bin')))).toBe(sha(data));
   });
 
   it('restarts when the partial file does not match', async () => {
@@ -273,14 +283,14 @@ describe('resume', () => {
   });
 
   it('appends to a shorter existing file with the resume policy', async () => {
-    const data = randomBytes(512 * 1024);
+    const data = randomBytes(6 * 1024 * 1024);
     await writeFile(path.join(local, 'append.bin'), data);
-    await writeFile(real('append.bin'), data.subarray(0, 100_000));
+    await writeFile(real('append.bin'), data.subarray(0, 5_000_000));
     const { result } = await transfer(
       { sources: [path.join(local, 'append.bin')], destination: remotePath() },
       { policy: 'resume' },
     );
-    expect(result.bytes).toBe(data.length - 100_000);
+    expect(result.bytes).toBe(data.length - (5_000_000 - 4 * 1024 * 1024));
     expect(sha(await readFile(real('append.bin')))).toBe(sha(data));
   });
 });

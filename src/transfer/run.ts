@@ -58,6 +58,7 @@ interface Task {
 }
 
 const TAIL_CHECK = 64 * 1024;
+const RESUME_OVERLAP = 4 * 1024 * 1024;
 const KEEP_PARTIAL = 8 * 1024 * 1024;
 const PROGRESS_INTERVAL = 100;
 const CANCEL_GRACE = 4000;
@@ -132,6 +133,10 @@ async function readTail(
   }
 }
 
+function resumePoint(size: number): number {
+  return Math.max(0, size - RESUME_OVERLAP);
+}
+
 async function canResume(plan: TransferPlan, file: PlannedFile, work: string, offset: number) {
   if (offset <= 0 || offset >= file.size) return false;
   const length = Math.min(TAIL_CHECK, offset);
@@ -157,6 +162,7 @@ async function pump(
 ): Promise<void> {
   let next = from;
   let failed = false;
+  let issued = Promise.resolve();
   const worker = async () => {
     const buffer = Buffer.allocUnsafe(shape.chunk);
     while (!failed) {
@@ -165,13 +171,24 @@ async function pump(
       if (offset >= size) return;
       next += shape.chunk;
       const length = Math.min(shape.chunk, size - offset);
+      const turn = issued;
+      let release = () => {};
+      issued = new Promise<void>((resolve) => {
+        release = resolve;
+      });
       try {
         await readFully(reader, buffer, length, offset);
+        await turn;
+        if (failed) return;
         signal.throwIfAborted();
-        await writer.write(buffer, 0, length, offset);
+        const writing = writer.write(buffer, 0, length, offset);
+        release();
+        await writing;
       } catch (error) {
         failed = true;
         throw error;
+      } finally {
+        release();
       }
       onBytes(length);
     }
@@ -276,15 +293,14 @@ export async function runTransfer(
       : target.path.join(dir, partName(target.path.basename(finalPath)));
     let offset = 0;
     if (direct) {
-      offset = (await canResume(plan, file, work, file.existing?.size ?? 0))
-        ? (file.existing?.size ?? 0)
-        : 0;
+      const point = resumePoint(file.existing?.size ?? 0);
+      offset = (await canResume(plan, file, work, point)) ? point : 0;
       if (offset === 0) {
         direct = false;
         work = target.path.join(dir, partName(target.path.basename(finalPath)));
       }
-    } else if (!task.rename && (await canResume(plan, file, work, file.partial))) {
-      offset = file.partial;
+    } else if (!task.rename && (await canResume(plan, file, work, resumePoint(file.partial)))) {
+      offset = resumePoint(file.partial);
     }
 
     const entry: ActiveFile = { relative: file.relative, size: file.size, done: offset };
