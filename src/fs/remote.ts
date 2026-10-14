@@ -15,6 +15,13 @@ const SFTP_ERRNO: Record<number, string> = {
   8: 'ENOTSUP',
 };
 
+const SFTP_EOF = 1;
+
+interface DirItem {
+  filename: string;
+  attrs: SftpAttributes;
+}
+
 const SAFE_PACKET = 31 * 1024;
 const IN_FLIGHT_BYTES = 2 * 1024 * 1024;
 
@@ -177,12 +184,40 @@ export class RemoteFileSystem implements FileSystem {
     }
   }
 
-  async list(dir: string): Promise<Entry[]> {
-    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(
-      this.session,
-      dir,
-      (done) => this.sftp.readdir(dir, done),
+  private readDir(dir: string): Promise<DirItem[]> {
+    return call<DirItem[]>(this.session, dir, (done) =>
+      this.sftp.opendir(dir, (error, handle) => {
+        if (error) {
+          done(error);
+          return;
+        }
+        const items: DirItem[] = [];
+        const release = () => {
+          try {
+            this.sftp.close(handle, () => undefined);
+          } catch {}
+        };
+        const next = () => {
+          this.sftp.readdir(handle, (failure, list) => {
+            if (failure) {
+              release();
+              if ((failure as Error & { code?: unknown }).code === SFTP_EOF) done(null, items);
+              else done(failure);
+              return;
+            }
+            for (const item of list) {
+              if (item.filename !== '.' && item.filename !== '..') items.push(item);
+            }
+            next();
+          });
+        };
+        next();
+      }),
     );
+  }
+
+  async list(dir: string): Promise<Entry[]> {
+    const items = await this.readDir(dir);
     return mapLimit(items, 32, async ({ filename, attrs }) => {
       const target = path.posix.join(dir, filename);
       if ((attrs.mode & S_IFMT) !== S_IFLNK) return toEntry(filename, target, attrs, false);
@@ -192,11 +227,7 @@ export class RemoteFileSystem implements FileSystem {
   }
 
   async scan(dir: string): Promise<ScanEntry[]> {
-    const items = await call<{ filename: string; attrs: SftpAttributes }[]>(
-      this.session,
-      dir,
-      (done) => this.sftp.readdir(dir, done),
-    );
+    const items = await this.readDir(dir);
     return items.map(({ filename, attrs }) => ({
       name: filename,
       dir: (attrs.mode & S_IFMT) === S_IFDIR,

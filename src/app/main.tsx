@@ -175,8 +175,10 @@ export async function main(argv: string[]): Promise<number> {
   const ui = new Ui();
   const ctx = createContext(ui, args);
   const onSignal = () => ui.interrupt();
+  const onHangup = () => process.exit(129);
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
+  process.on('SIGHUP', onHangup);
   let code = 0;
   try {
     ui.intro(args.command ? TITLES[args.command.name] : args.word ? args.word : `v${__VERSION__}`);
@@ -212,6 +214,7 @@ export async function main(argv: string[]): Promise<number> {
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    process.off('SIGHUP', onHangup);
     ctx.close();
     await ui.close();
   }

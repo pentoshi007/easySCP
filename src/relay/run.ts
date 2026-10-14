@@ -184,6 +184,10 @@ async function relayTo(
   const owed = new Set(pendingFiles(target.plan, policy).map((file) => file.source));
   for (const file of owed) stage.expect(file);
   const finished = new Set<string>();
+  const releases: Promise<void>[] = [];
+  const release = (file: string) => {
+    releases.push(stage.release(file).catch(() => undefined));
+  };
   const started = performance.now();
   let plan = target.plan;
   let total: TransferResult | undefined;
@@ -199,7 +203,7 @@ async function relayTo(
         },
         onFileDone: (file) => {
           finished.add(file.source);
-          if (owed.delete(file.source)) void stage.release(file.source);
+          if (owed.delete(file.source)) release(file.source);
         },
       });
       total = combine(total, result);
@@ -223,7 +227,9 @@ async function relayTo(
       }
     }
   } finally {
-    for (const file of owed) void stage.release(file);
+    for (const file of owed) release(file);
+    owed.clear();
+    await Promise.all(releases);
   }
 
   const result = { ...(total as TransferResult), durationMs: performance.now() - started };
