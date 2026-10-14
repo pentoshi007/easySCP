@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs';
+import { closeSync, rmSync } from 'node:fs';
 import { type FileHandle, mkdir, mkdtemp, open, readdir, rm, statfs } from 'node:fs/promises';
 import type { PlatformPath } from 'node:path';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { Semaphore } from '../util/concurrency.js';
 
 const RESERVED_SPACE = 1024 ** 3;
 const FETCH_CONCURRENCY = 32;
+const DISCARD_GRACE = 2000;
 
 export interface StageUsage {
   fetched: number;
@@ -55,29 +56,52 @@ async function writeExact(handle: FileHandle, buffer: Buffer, position: number):
   }
 }
 
+function settleWithin(tasks: Promise<unknown>[], ms: number): Promise<void> {
+  if (tasks.length === 0) return Promise.resolve();
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    Promise.allSettled(tasks).then(() => undefined),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+      timer.unref();
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+function discardedError(): Error {
+  return new AppError('The relay cache was already cleaned up');
+}
+
 class StagedFile {
   readonly ready: Uint8Array;
   readonly pending = new Map<number, Promise<Buffer>>();
   readonly writes = new Set<Promise<void>>();
   stored = 0;
-  staging = true;
+  discarded = false;
   private disk: Promise<FileHandle> | undefined;
+  private fd: number | undefined;
   private reader: Promise<Reader> | undefined;
 
   constructor(
     readonly entry: Entry,
     blockSize: number,
     private readonly file: string,
+    public staging: boolean,
   ) {
-    this.ready = new Uint8Array(Math.ceil(entry.size / blockSize));
+    this.ready = new Uint8Array(staging ? Math.ceil(entry.size / blockSize) : 0);
   }
 
   handle(): Promise<FileHandle> {
-    this.disk ??= open(this.file, 'w+');
+    if (this.discarded) return Promise.reject(discardedError());
+    this.disk ??= open(this.file, 'w+', 0o600).then((handle) => {
+      this.fd = handle.fd;
+      return handle;
+    });
     return this.disk;
   }
 
   source(fs: FileSystem): Promise<Reader> {
+    if (this.discarded) return Promise.reject(discardedError());
     if (!this.reader) {
       const opening = fs.openRead(this.entry.path);
       this.reader = opening;
@@ -95,13 +119,25 @@ class StagedFile {
   }
 
   async discard(): Promise<void> {
-    await Promise.allSettled([...this.pending.values(), ...this.writes]);
+    this.discarded = true;
+    this.staging = false;
+    await settleWithin([...this.writes], DISCARD_GRACE);
     this.reset();
     const disk = this.disk;
     this.disk = undefined;
+    this.fd = undefined;
     if (!disk) return;
     await disk.then((handle) => handle.close()).catch(() => undefined);
     await rm(this.file, { force: true }).catch(() => undefined);
+  }
+
+  closeSync(): void {
+    const fd = this.fd;
+    this.fd = undefined;
+    if (fd === undefined) return;
+    try {
+      closeSync(fd);
+    } catch {}
   }
 }
 
@@ -120,11 +156,13 @@ export class Stage implements FileSystem {
   private readonly fetches = new Semaphore(FETCH_CONCURRENCY);
   private readonly usage: StageUsage = { fetched: 0, direct: 0, stored: 0 };
   private readonly cleanup = () => {
+    for (const file of this.files.values()) file.closeSync();
     try {
       rmSync(this.dir, { recursive: true, force: true });
     } catch {}
   };
   private counter = 0;
+  private finished = false;
 
   constructor(
     private source: FileSystem,
@@ -222,11 +260,15 @@ export class Stage implements FileSystem {
   }
 
   async close(): Promise<void> {
+    this.finished = true;
     const files = [...this.files.values()];
-    this.files.clear();
-    await Promise.all(files.map((file) => this.evict(file)));
-    await rm(this.dir, { recursive: true, force: true }).catch(() => undefined);
-    process.off('exit', this.cleanup);
+    try {
+      await Promise.all(files.map((file) => this.evict(file)));
+    } finally {
+      this.files.clear();
+      await rm(this.dir, { recursive: true, force: true }).catch(() => undefined);
+      process.off('exit', this.cleanup);
+    }
   }
 
   private readOnly(): never {
@@ -252,15 +294,22 @@ export class Stage implements FileSystem {
     }
     const raced = this.files.get(file);
     if (raced) return raced;
-    const created = new StagedFile(entry, this.blockSize, join(this.dir, String(++this.counter)));
+    const shared = (this.consumers.get(file) ?? 0) > 1;
+    const created = new StagedFile(
+      entry,
+      this.blockSize,
+      join(this.dir, String(++this.counter)),
+      shared && !this.finished,
+    );
     this.files.set(file, created);
     return created;
   }
 
   private async evict(file: StagedFile): Promise<void> {
-    await file.discard();
+    const discarding = file.discard();
     this.usage.stored -= file.stored;
     file.stored = 0;
+    await discarding;
   }
 
   private async read(
@@ -324,6 +373,7 @@ export class Stage implements FileSystem {
     this.usage.stored += length;
     file.stored += length;
     const unstore = () => {
+      if (file.discarded) return;
       this.usage.stored -= length;
       file.stored -= length;
     };

@@ -2,6 +2,7 @@ import { AppError } from '../core/errors.js';
 import { isPlainName, partName, portableName } from '../fs/names.js';
 import { parentDir } from '../fs/ops.js';
 import type { Entry, FileSystem } from '../fs/types.js';
+import { mapLimit, Semaphore } from '../util/concurrency.js';
 
 export interface TransferSpec {
   source: FileSystem;
@@ -50,7 +51,9 @@ interface Item {
   segments: string[];
 }
 
-const WALK_CONCURRENCY = 8;
+const WALK_CONCURRENCY = 16;
+const STAT_CONCURRENCY = 16;
+const LIST_CONCURRENCY = 16;
 const MTIME_TOLERANCE = 2000;
 
 export function isIdentical(file: PlannedFile): boolean {
@@ -73,13 +76,11 @@ function endsWithSeparator(fs: FileSystem, target: string): boolean {
 
 async function walk(
   fs: FileSystem,
-  root: Entry,
-  base: string[],
+  queue: { dir: string; segments: string[] }[],
   items: Item[],
   skipped: SkippedItem[],
   options: PlanOptions,
 ): Promise<void> {
-  const queue: { dir: string; segments: string[] }[] = [{ dir: root.path, segments: base }];
   let active = 0;
   let failure: unknown;
 
@@ -148,7 +149,11 @@ export async function planTransfer(
   const { source, target, sources, destination } = spec;
   if (sources.length === 0) throw new AppError('Nothing selected to transfer');
 
-  const destStat = await target.stat(destination);
+  const [destStat, stats] = await Promise.all([
+    target.stat(destination),
+    mapLimit(sources, STAT_CONCURRENCY, (path) => source.stat(path)),
+  ]);
+  options.signal?.throwIfAborted();
   const single = sources.length === 1;
   let into: boolean;
   if (spec.placement === 'as' && single) into = false;
@@ -159,8 +164,8 @@ export async function planTransfer(
   else into = spec.placement === 'into' || !single || endsWithSeparator(target, destination);
 
   const roots: Entry[] = [];
-  for (const path of sources) {
-    const entry = await source.stat(path);
+  for (const [index, path] of sources.entries()) {
+    const entry = stats[index];
     if (!entry) throw new AppError(`Not found: ${path}`);
     if (source === target && entry.kind === 'dir' && containsPath(source, path, destination)) {
       throw new AppError(`Cannot copy ${path} into itself`);
@@ -179,18 +184,27 @@ export async function planTransfer(
 
   const items: Item[] = [];
   const skipped: SkippedItem[] = [];
+  const queue: { dir: string; segments: string[] }[] = [];
   for (const root of roots) {
-    options.signal?.throwIfAborted();
     const name = into ? portableName(target, root.name) : target.path.basename(destination);
     if (root.kind === 'other') {
       skipped.push({ path: root.path, reason: 'Not a regular file' });
       continue;
     }
     items.push({ entry: root, segments: [name] });
-    if (root.kind === 'dir') await walk(source, root, [name], items, skipped, options);
+    if (root.kind === 'dir') queue.push({ dir: root.path, segments: [name] });
   }
+  if (queue.length > 0) await walk(source, queue, items, skipped, options);
+  options.signal?.throwIfAborted();
   items.sort((a, b) => compareSegments(a.segments, b.segments));
 
+  const place = (segments: string[]) => {
+    const safe = segments.map((segment, index) =>
+      index === 0 && !into ? segment : portableName(target, segment),
+    );
+    return { destPath: target.path.join(anchor, ...safe), relative: safe.join('/') };
+  };
+  const lister = new Semaphore(LIST_CONCURRENCY);
   const listings = new Map<string, Promise<Map<string, Entry>>>();
   const listing = (dir: string): Promise<Map<string, Entry>> => {
     let pending = listings.get(dir);
@@ -204,13 +218,21 @@ export async function planTransfer(
           const self = (await listing(parent)).get(target.path.basename(dir));
           if (self?.kind !== 'dir') return new Map();
         }
-        const entries = await target.list(dir).catch(() => []);
+        if (options.signal?.aborted) return new Map();
+        const entries = await lister.run(() => target.list(dir)).catch(() => []);
         return new Map(entries.map((entry) => [entry.name, entry]));
       })();
       listings.set(dir, pending);
     }
     return pending;
   };
+
+  for (const { segments } of items) {
+    const { destPath } = place(segments);
+    if (destPath !== anchor && containsPath(target, anchor, destPath)) {
+      void listing(parentDir(target, destPath) ?? anchor);
+    }
+  }
 
   const seen = new Set<string>();
   const blocked: string[] = [];
@@ -219,11 +241,8 @@ export async function planTransfer(
   const isBlocked = (path: string) => blocked.some((prefix) => containsPath(target, prefix, path));
 
   for (const { entry, segments } of items) {
-    const safe = segments.map((segment, index) =>
-      index === 0 && !into ? segment : portableName(target, segment),
-    );
-    const destPath = target.path.join(anchor, ...safe);
-    const relative = safe.join('/');
+    options.signal?.throwIfAborted();
+    const { destPath, relative } = place(segments);
     if (destPath === anchor || !containsPath(target, anchor, destPath)) {
       skipped.push({ path: entry.path, reason: 'Unsafe file name' });
       continue;

@@ -393,24 +393,29 @@ export async function copyFlow(ctx: Context, request: CopyFlowRequest): Promise<
   const started = performance.now();
   const stage = await createStage(sourceFs);
   try {
-    const settled = await ui.spin(
-      `Checking ${joinNames(targets.map((target) => target.label))}`,
-      () =>
-        Promise.allSettled(
-          targets.map((target) =>
-            planTransfer(
-              {
-                source: stage,
-                target: target.fs,
-                sources: paths,
-                destination: target.dir,
-                placement: 'into',
-              },
-              { signal: ui.signal },
-            ),
+    const checking = `Checking ${joinNames(targets.map((target) => target.label))}`;
+    const settled = await ui.spin(checking, (setLabel) => {
+      let scanned = 0;
+      const onScan = (count: number) => {
+        if (count <= scanned) return;
+        scanned = count;
+        setLabel(`${checking} ${symbols.dot} ${plural(count, 'item')} found`);
+      };
+      return Promise.allSettled(
+        targets.map((target) =>
+          planTransfer(
+            {
+              source: stage,
+              target: target.fs,
+              sources: paths,
+              destination: target.dir,
+              placement: 'into',
+            },
+            { signal: ui.signal, onScan },
           ),
         ),
-    );
+      );
+    });
     ui.signal.throwIfAborted();
     const planned: Planned[] = [];
     settled.forEach((result, index) => {
