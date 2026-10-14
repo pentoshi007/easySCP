@@ -9,7 +9,7 @@ import { Spinner } from './Spinner.js';
 
 interface RelayViewProps {
   title: string;
-  source: string;
+  source?: string;
   progress: RelayProgress | undefined;
   cancelling?: boolean;
 }
@@ -87,7 +87,7 @@ export function RelayView({ title, source, progress, cancelling }: RelayViewProp
     );
   }
 
-  const labels = [source, ...progress.targets.map((target) => target.label)];
+  const labels = [...(source ? [source] : []), ...progress.targets.map((target) => target.label)];
   const nameWidth = Math.min(20, Math.max(...labels.map((label) => label.length)) + 1);
   const barWidth = Math.max(10, Math.min(30, width - nameWidth - 12));
   const fetched = Math.min(progress.fetchedBytes, progress.neededBytes);
@@ -105,39 +105,43 @@ export function RelayView({ title, source, progress, cancelling }: RelayViewProp
         )
       }
     >
-      <Box>
-        <Box width={2} flexShrink={0}>
-          {sourceDone ? (
-            <Text color={colors.muted}>{symbols.arrowDown}</Text>
-          ) : (
-            <Spinner color={colors.muted} />
-          )}
-        </Box>
-        <Box width={nameWidth} flexShrink={0}>
-          <Text bold wrap="truncate-end">
-            {source}
-          </Text>
-        </Box>
-        <Box flexShrink={0}>
-          <ProgressBar
-            value={progress.neededBytes > 0 ? fetched / progress.neededBytes : 1}
-            width={barWidth}
-            color="white"
-          />
-          <Text color={colors.muted}>
-            {percent(progress.neededBytes > 0 ? fetched / progress.neededBytes : 1)}{' '}
-          </Text>
-        </Box>
-        <Text color={colors.muted} wrap="truncate-end">
-          {sourceDone
-            ? `fetched ${formatBytes(progress.fetchedBytes)}`
-            : joinStats([
-                `${formatBytes(fetched)} of ${formatBytes(progress.neededBytes)}`,
-                formatSpeed(progress.speed),
-              ])}
-        </Text>
-      </Box>
-      <Text> </Text>
+      {source ? (
+        <>
+          <Box>
+            <Box width={2} flexShrink={0}>
+              {sourceDone ? (
+                <Text color={colors.muted}>{symbols.arrowDown}</Text>
+              ) : (
+                <Spinner color={colors.muted} />
+              )}
+            </Box>
+            <Box width={nameWidth} flexShrink={0}>
+              <Text bold wrap="truncate-end">
+                {source}
+              </Text>
+            </Box>
+            <Box flexShrink={0}>
+              <ProgressBar
+                value={progress.neededBytes > 0 ? fetched / progress.neededBytes : 1}
+                width={barWidth}
+                color="white"
+              />
+              <Text color={colors.muted}>
+                {percent(progress.neededBytes > 0 ? fetched / progress.neededBytes : 1)}{' '}
+              </Text>
+            </Box>
+            <Text color={colors.muted} wrap="truncate-end">
+              {sourceDone
+                ? `fetched ${formatBytes(progress.fetchedBytes)}`
+                : joinStats([
+                    `${formatBytes(fetched)} of ${formatBytes(progress.neededBytes)}`,
+                    formatSpeed(progress.speed),
+                  ])}
+            </Text>
+          </Box>
+          <Text> </Text>
+        </>
+      ) : null}
       {progress.targets.map((target) => {
         const line = targetLine(target);
         return (

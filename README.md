@@ -77,6 +77,7 @@ Leave out an argument and easyscp asks for it. Pass everything to skip the quest
 
 ```sh
 easyscp send prod ./dist -t /var/www --overwrite
+easyscp send ./dist web1 web2:/srv/app -t /var/www
 easyscp get prod '/var/log/*.log' -t ./logs
 easyscp copy web1:/srv/app.tar web2 web3:/opt -t /srv
 ```
@@ -89,7 +90,7 @@ easyscp copy web1:/srv/app.tar web2 web3:/opt -t /srv
 
 | Command | Aliases | Purpose |
 | --- | --- | --- |
-| `send [machine] [files...]` | `up`, `push`, `upload` | Upload files or folders |
+| `send [machine[:folder]...] [files...]` | `up`, `push`, `upload` | Upload files or folders to one or more machines |
 | `receive [machine] [paths...]` | `get`, `down`, `pull`, `download` | Download files or folders |
 | `copy [from[:paths]] [to[:folder]...]` | `cp`, `relay` | Copy from one machine to others |
 | `browse [machine]` | `open`, `files` | Two-pane file browser |

@@ -37,15 +37,30 @@ const ARROWS: Record<HistoryEntry['direction'], string> = {
   copy: symbols.fanOut,
 };
 
+function targetNames(entry: HistoryEntry): string[] {
+  return (entry.targets ?? []).map((target) => target.hostName);
+}
+
+function sentToMany(entry: HistoryEntry): boolean {
+  return entry.direction === 'upload' && (entry.targets?.length ?? 0) > 1;
+}
+
 function destinationOf(entry: HistoryEntry): string {
   switch (entry.direction) {
     case 'upload':
-      return `${entry.hostName}:${entry.destination}`;
+      return sentToMany(entry)
+        ? joinNames(targetNames(entry))
+        : `${entry.hostName}:${entry.destination}`;
     case 'download':
       return displayPath(localFs, entry.destination);
     default:
-      return joinNames((entry.targets ?? []).map((target) => target.hostName));
+      return joinNames(targetNames(entry));
   }
+}
+
+function counterpart(entry: HistoryEntry): string {
+  if (entry.direction !== 'upload') return `from ${entry.hostName}`;
+  return `to ${sentToMany(entry) ? joinNames(targetNames(entry)) : entry.hostName}`;
 }
 
 export function describeEntry(entry: HistoryEntry): { label: string; hint: string } {
@@ -63,7 +78,7 @@ export function describeEntry(entry: HistoryEntry): { label: string; hint: strin
         ? 'nothing new'
         : '';
   const parts = [
-    `${entry.direction === 'upload' ? 'to' : 'from'} ${entry.hostName}`,
+    counterpart(entry),
     entry.status === 'done' ? '' : entry.status,
     amount,
     formatRelative(entry.at),
@@ -89,16 +104,32 @@ function HistoryTable({ entries }: { entries: HistoryEntry[] }) {
 
 export async function repeatTransfer(ctx: Context, entry: HistoryEntry): Promise<Outcome> {
   const hosts = await listHosts();
-  const host = hosts.find((candidate) => candidate.id === entry.hostId);
-  if (!host) throw new AppError(`${entry.hostName} is no longer saved`);
   const policy = entry.status === 'done' ? undefined : 'resume';
-  if (entry.direction === 'copy') {
+  const savedTargets = () => {
     const destinations = (entry.targets ?? []).flatMap((target) => {
       const saved = hosts.find((candidate) => candidate.id === target.hostId);
       return saved ? [{ host: saved, dir: target.destination || undefined }] : [];
     });
     if (destinations.length === 0) throw new AppError('Those machines are no longer saved');
-    return copyFlow(ctx, { source: host, paths: entry.sources, destinations, policy });
+    return destinations;
+  };
+  if (entry.direction === 'upload' && entry.targets?.length) {
+    return transferFlow(ctx, {
+      direction: 'upload',
+      sources: entry.sources,
+      destinations: savedTargets(),
+      policy,
+    });
+  }
+  const host = hosts.find((candidate) => candidate.id === entry.hostId);
+  if (!host) throw new AppError(`${entry.hostName} is no longer saved`);
+  if (entry.direction === 'copy') {
+    return copyFlow(ctx, {
+      source: host,
+      paths: entry.sources,
+      destinations: savedTargets(),
+      policy,
+    });
   }
   return transferFlow(ctx, {
     direction: entry.direction,

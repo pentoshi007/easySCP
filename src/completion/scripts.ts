@@ -7,8 +7,9 @@ export function isShell(value: string | undefined): value is Shell {
   return SHELLS.includes(value as Shell);
 }
 
-const HOST_COMMANDS = ['send', 'receive', 'browse', 'edit', 'remove', 'test'];
+const HOST_COMMANDS = ['receive', 'browse', 'edit', 'remove', 'test'];
 const MACHINES_COMMANDS = ['copy'];
+const MIXED_COMMANDS = ['send'];
 
 function wordsFor(names?: string[]): string[] {
   return COMMANDS.filter((command) => !names || names.includes(command.name)).flatMap((command) => [
@@ -23,6 +24,7 @@ export function completionScript(shell: Shell): string {
   const commands = wordsFor().join(' ');
   const hostCommands = wordsFor(HOST_COMMANDS).join('|');
   const machinesCommands = wordsFor(MACHINES_COMMANDS).join('|');
+  const mixedCommands = wordsFor(MIXED_COMMANDS).join('|');
   switch (shell) {
     case 'bash':
       return `_easyscp() {
@@ -32,6 +34,8 @@ export function completionScript(shell: Shell): string {
   else
     case "\${COMP_WORDS[1]}" in
       ${machinesCommands}) COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur")) ;;
+      ${mixedCommands})
+        COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur") $(compgen -f -- "$cur")) ;;
       ${hostCommands})
         if [ "$COMP_CWORD" -eq 2 ]; then
           COMPREPLY=($(compgen -W "$(easyscp __hosts 2>/dev/null)" -- "$cur"))
@@ -53,6 +57,9 @@ _easyscp() {
     compadd -- ${commands} $hosts
   elif [[ "\${words[2]}" == (${machinesCommands}) ]]; then
     compadd -- $hosts
+  elif [[ "\${words[2]}" == (${mixedCommands}) ]]; then
+    compadd -- $hosts
+    _files
   elif (( CURRENT == 3 )) && [[ "\${words[2]}" == (${hostCommands}) ]]; then
     compadd -- $hosts
   else
@@ -75,6 +82,7 @@ for cmd in easyscp escp
     complete -c $cmd -f -n "__fish_is_nth_token 1" -a "(__easyscp_hosts)"
     complete -c $cmd -f -n "__fish_is_nth_token 2; and __fish_seen_subcommand_from ${wordsFor(HOST_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"
     complete -c $cmd -f -n "__fish_seen_subcommand_from ${wordsFor(MACHINES_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"
+    complete -c $cmd -n "not __fish_is_nth_token 1; and __fish_seen_subcommand_from ${wordsFor(MIXED_COMMANDS).join(' ')}" -a "(__easyscp_hosts)"
 end
 `;
     case 'powershell':
@@ -90,6 +98,9 @@ end
     $candidates = @(easyscp __hosts 2>$null)
   } elseif ($position -eq 2 -and @(${quoted(wordsFor(HOST_COMMANDS))}) -contains $words[1]) {
     $candidates = @(easyscp __hosts 2>$null)
+  } elseif (@(${quoted(wordsFor(MIXED_COMMANDS))}) -contains $words[1]) {
+    $candidates = @(easyscp __hosts 2>$null) | Where-Object { $_ -like "$wordToComplete*" }
+    if (-not $candidates) { return }
   } else {
     return
   }

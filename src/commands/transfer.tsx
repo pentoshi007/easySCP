@@ -1,24 +1,16 @@
-import os from 'node:os';
-import path from 'node:path';
 import { Box, Text } from 'ink';
 import type { Context } from '../app/context.js';
-import { chooseHost } from '../app/hostPicker.js';
+import { chooseHost, chooseHosts } from '../app/hostPicker.js';
 import { conflictQuestion, summarizeResult } from '../app/transferText.js';
 import { AppError } from '../core/errors.js';
-import { findHost, type Host, requireHost } from '../core/hosts.js';
-import {
-  recentLocalDirs,
-  recentRemoteDirs,
-  rememberLocalDir,
-  rememberRemoteDir,
-} from '../core/state.js';
-import { expandPaths } from '../fs/glob.js';
+import { findHost, type Host, listHosts, requireHost } from '../core/hosts.js';
+import { rememberLocalDir, rememberRemoteDir } from '../core/state.js';
+import { expandPaths, hasGlob } from '../fs/glob.js';
 import { localFs } from '../fs/local.js';
 import { displayPath, parentDir, resolveInput } from '../fs/ops.js';
-import type { RemoteFileSystem } from '../fs/remote.js';
 import type { FileSystem } from '../fs/types.js';
 import { type Direction, recordTransfer } from '../transfer/history.js';
-import { planTransfer, type SkippedItem, type TransferPlan } from '../transfer/plan.js';
+import { planTransfer, type TransferPlan } from '../transfer/plan.js';
 import {
   type ConflictPolicy,
   runTransfer,
@@ -26,15 +18,39 @@ import {
   type TransferResult,
 } from '../transfer/run.js';
 import { TransferView } from '../ui/components/TransferView.js';
-import type { Shortcut } from '../ui/picker/model.js';
 import { pickDirectory, pickFiles } from '../ui/picker/pickers.js';
 import { colors, symbols } from '../ui/theme.js';
 import type { Ui } from '../ui/ui.js';
-import { plural, printable } from '../util/format.js';
+import { joinNames, plural, printable } from '../util/format.js';
 import { addHost } from './add.js';
+import { type CopyDestination, parseSendTokens } from './copyArgs.js';
+import { connectHosts, deliver, uniqueHosts } from './fanout.js';
 import { done, fail, type Outcome, warn } from './outcome.js';
+import { localStart, MAX_LISTED_FAILURES, remoteStart, SkippedList } from './places.js';
+
+async function isLocalPath(token: string): Promise<boolean> {
+  return Boolean(await localFs.stat(resolveInput(localFs, token, process.cwd())));
+}
 
 export async function transferCommand(ctx: Context, direction: Direction): Promise<Outcome> {
+  if (direction === 'upload') {
+    const request = await parseSendTokens(ctx.args.positionals, await listHosts(), isLocalPath);
+    if (request.destinations.length === 0) {
+      for (const token of request.paths) {
+        if (!hasGlob(token) && !(await isLocalPath(token))) await requireHost(token);
+      }
+    }
+    return transferFlow(ctx, {
+      direction,
+      sources: request.paths,
+      destinations: request.destinations.map((entry) => ({
+        host: entry.host,
+        dir: entry.dir ?? ctx.args.to,
+      })),
+      destination: ctx.args.to,
+    });
+  }
+
   const [first, ...rest] = ctx.args.positionals;
   let hostName: string | undefined;
   let sources: string[] = [];
@@ -42,11 +58,6 @@ export async function transferCommand(ctx: Context, direction: Direction): Promi
     if (await findHost(first)) {
       hostName = first;
       sources = rest;
-    } else if (
-      direction === 'upload' &&
-      (await localFs.stat(resolveInput(localFs, first, process.cwd())))
-    ) {
-      sources = [first, ...rest];
     } else {
       await requireHost(first);
     }
@@ -63,69 +74,10 @@ export interface TransferRequest {
   direction: Direction;
   host?: Host;
   hostName?: string;
+  destinations?: CopyDestination[];
   sources?: string[];
   destination?: string;
   policy?: ConflictPolicy;
-}
-
-const MAX_SHORTCUTS = 5;
-const MAX_LISTED_FAILURES = 5;
-
-async function existingDirs(fs: FileSystem, candidates: (string | undefined)[]): Promise<string[]> {
-  const unique = [...new Set(candidates.filter((dir): dir is string => Boolean(dir)))];
-  const checks = await Promise.all(
-    unique.map(async (dir) => ((await fs.stat(dir))?.kind === 'dir' ? dir : undefined)),
-  );
-  return checks.filter((dir): dir is string => dir !== undefined);
-}
-
-export async function remoteStart(
-  fs: RemoteFileSystem,
-  host: Host,
-): Promise<{ start: string; shortcuts: Shortcut[] }> {
-  const configured = host.remoteDir ? resolveInput(fs, host.remoteDir, fs.home) : undefined;
-  const recent = await recentRemoteDirs(host.id);
-  const dirs = await existingDirs(fs, [configured, ...recent, fs.home]);
-  const start = dirs[0] ?? fs.home;
-  const shortcuts: Shortcut[] = [];
-  if (configured && dirs.includes(configured))
-    shortcuts.push({ path: configured, label: 'Default folder' });
-  for (const dir of recent) {
-    if (shortcuts.length >= MAX_SHORTCUTS) break;
-    if (dirs.includes(dir) && !shortcuts.some((entry) => entry.path === dir)) {
-      shortcuts.push({ path: dir, label: 'Recent' });
-    }
-  }
-  if (!shortcuts.some((entry) => entry.path === fs.home))
-    shortcuts.push({ path: fs.home, label: 'Home' });
-  return { start, shortcuts };
-}
-
-async function localStart(host: Host): Promise<{ start: string; shortcuts: Shortcut[] }> {
-  const home = os.homedir();
-  const named: Shortcut[] = [
-    { path: process.cwd(), label: 'Current folder' },
-    { path: path.join(home, 'Downloads'), label: 'Downloads' },
-    { path: path.join(home, 'Desktop'), label: 'Desktop' },
-    { path: home, label: 'Home' },
-  ];
-  const recent = (await recentLocalDirs()).map((dir) => ({ path: dir, label: 'Recent' }));
-  const configured = host.localDir ? [{ path: host.localDir, label: 'Default folder' }] : [];
-  const candidates = [...configured, ...recent.slice(0, 3), ...named];
-  const valid = new Set(
-    await existingDirs(
-      localFs,
-      candidates.map((entry) => entry.path),
-    ),
-  );
-  const shortcuts: Shortcut[] = [];
-  for (const entry of candidates) {
-    if (valid.has(entry.path) && !shortcuts.some((existing) => existing.path === entry.path)) {
-      shortcuts.push(entry);
-    }
-  }
-  const start = host.localDir && valid.has(host.localDir) ? host.localDir : process.cwd();
-  return { start, shortcuts: shortcuts.slice(0, MAX_SHORTCUTS + 1) };
 }
 
 async function planWithProgress(ui: Ui, title: string, spec: Parameters<typeof planTransfer>[0]) {
@@ -186,24 +138,6 @@ async function runWithProgress(
   }
 }
 
-export function SkippedList({ fs, items }: { fs: FileSystem; items: SkippedItem[] }) {
-  const shown = items.slice(0, MAX_LISTED_FAILURES);
-  return (
-    <Box flexDirection="column">
-      {shown.map((item) => (
-        <Text key={item.path} color={colors.muted} wrap="truncate-middle">
-          {symbols.dot} {displayPath(fs, item.path)} <Text dimColor>{item.reason}</Text>
-        </Text>
-      ))}
-      {items.length > shown.length ? (
-        <Text color={colors.muted}>
-          {symbols.ellipsis} and {items.length - shown.length} more
-        </Text>
-      ) : null}
-    </Box>
-  );
-}
-
 function report(ui: Ui, result: TransferResult, verb: string, where: string): Outcome {
   const summary = summarizeResult(result, verb, where);
   switch (result.status) {
@@ -243,28 +177,76 @@ function report(ui: Ui, result: TransferResult, verb: string, where: string): Ou
   }
 }
 
+async function sendDestinations(
+  ctx: Context,
+  request: TransferRequest,
+): Promise<CopyDestination[]> {
+  if (request.destinations?.length) return request.destinations;
+  if (request.host) return [{ host: request.host, dir: request.destination }];
+  if (request.hostName) {
+    return [{ host: await requireHost(request.hostName), dir: request.destination }];
+  }
+  const hosts = await chooseHosts(ctx, {
+    title: 'Send to which machines?',
+    onAdd: () => addHost(ctx),
+  });
+  return hosts.map((host) => ({ host, dir: request.destination }));
+}
+
+async function pickLocalSources(
+  ctx: Context,
+  request: TransferRequest,
+  hosts: Host[],
+): Promise<string[]> {
+  if (request.sources?.length) return expandPaths(localFs, request.sources, process.cwd());
+  const start = hosts.find((host) => host.localDir)?.localDir ?? process.cwd();
+  return pickFiles(ctx.ui, {
+    fs: localFs,
+    start,
+    title: `What do you want to send to ${joinNames(hosts.map((host) => host.name))}?`,
+    action: 'send',
+  });
+}
+
+async function sendToMany(
+  ctx: Context,
+  request: TransferRequest,
+  destinations: CopyDestination[],
+): Promise<Outcome> {
+  const hosts = uniqueHosts(destinations);
+  const paths = await pickLocalSources(ctx, request, hosts);
+  const connections = await connectHosts(ctx, hosts);
+  return deliver(ctx, {
+    mode: 'send',
+    paths,
+    destinations,
+    connections,
+    policy: request.policy,
+  });
+}
+
 export async function transferFlow(ctx: Context, request: TransferRequest): Promise<Outcome> {
   const { ui, args } = ctx;
   const upload = request.direction === 'upload';
-  const host =
-    request.host ??
-    (await chooseHost(ctx, {
-      title: upload ? 'Send to which machine?' : 'Receive from which machine?',
-      name: request.hostName,
-      onAdd: () => addHost(ctx),
-    }));
-
-  let localSources: string[] | undefined;
+  let host: Host;
+  let typedDestination = request.destination;
   if (upload) {
-    localSources = request.sources?.length
-      ? await expandPaths(localFs, request.sources, process.cwd())
-      : await pickFiles(ui, {
-          fs: localFs,
-          start: host.localDir ?? process.cwd(),
-          title: `What do you want to send to ${host.name}?`,
-          action: 'send',
-        });
+    const destinations = await sendDestinations(ctx, request);
+    if (destinations.length > 1) return sendToMany(ctx, request, destinations);
+    const [only] = destinations as [CopyDestination];
+    host = only.host;
+    typedDestination = only.dir;
+  } else {
+    host =
+      request.host ??
+      (await chooseHost(ctx, {
+        title: 'Receive from which machine?',
+        name: request.hostName,
+        onAdd: () => addHost(ctx),
+      }));
   }
+
+  const localSources = upload ? await pickLocalSources(ctx, request, [host]) : undefined;
 
   const remote = await ctx.connect(host);
   let source: FileSystem;
@@ -277,8 +259,8 @@ export async function transferFlow(ctx: Context, request: TransferRequest): Prom
     source = localFs;
     target = remote;
     sources = localSources as string[];
-    if (request.destination) {
-      destination = resolveInput(remote, request.destination, remote.home);
+    if (typedDestination) {
+      destination = resolveInput(remote, typedDestination, remote.home);
     } else {
       const { start, shortcuts } = await remoteStart(remote, host);
       destination = await pickDirectory(ui, {
@@ -304,8 +286,8 @@ export async function transferFlow(ctx: Context, request: TransferRequest): Prom
         action: 'download',
       });
     }
-    if (request.destination) {
-      destination = resolveInput(localFs, request.destination, process.cwd());
+    if (typedDestination) {
+      destination = resolveInput(localFs, typedDestination, process.cwd());
     } else {
       const { start, shortcuts } = await localStart(host);
       destination = await pickDirectory(ui, {

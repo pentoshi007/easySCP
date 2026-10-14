@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { findCommand, parseCommandLine, suggestCommand } from '../src/cli/args.js';
 import { renderHelp } from '../src/cli/help.js';
-import { parseCopyTokens } from '../src/commands/copyArgs.js';
+import { parseCopyTokens, parseSendTokens } from '../src/commands/copyArgs.js';
 import { completionScript } from '../src/completion/scripts.js';
 import type { Host } from '../src/core/hosts.js';
 import { colorsDisabled } from '../src/ui/theme.js';
@@ -68,6 +68,38 @@ describe('parseCopyTokens', () => {
     expect(() => parse('web1:/x', 'web2', 'stray')).toThrow(/"stray" is not a saved machine/);
     expect(() => parse('web1:/x', 'web1')).toThrow(/copying from/);
     expect(parse()).toEqual({ source: undefined, paths: [], destinations: [] });
+  });
+});
+
+describe('parseSendTokens', () => {
+  const machine = (name: string) => ({ id: `id-${name}`, name }) as Host;
+  const hosts = ['web1', 'web2'].map(machine);
+  const local = new Set(['./dist', 'C:\\build', 'notes:2024.txt']);
+  const parse = async (...tokens: string[]) => {
+    const request = await parseSendTokens(tokens, hosts, async (token) => local.has(token));
+    return {
+      paths: request.paths,
+      destinations: request.destinations.map((entry) => `${entry.host.name}=${entry.dir ?? ''}`),
+    };
+  };
+
+  it('takes machines and files in any order', async () => {
+    expect(await parse('web1', './dist')).toEqual({ paths: ['./dist'], destinations: ['web1='] });
+    expect(await parse('./dist', 'web1', 'web2:/srv')).toEqual({
+      paths: ['./dist'],
+      destinations: ['web1=', 'web2=/srv'],
+    });
+    expect(await parse('WEB1:', './dist', 'web1', 'web1:/a', 'web1:/a')).toEqual({
+      paths: ['./dist'],
+      destinations: ['web1=', 'web1=/a'],
+    });
+  });
+
+  it('keeps local paths that only look like machine:path', async () => {
+    expect(await parse('C:\\build', 'web1')).toMatchObject({ paths: ['C:\\build'] });
+    expect(await parse('notes:2024.txt', 'web1')).toMatchObject({ paths: ['notes:2024.txt'] });
+    expect(await parse('D:\\missing', 'web1')).toMatchObject({ paths: ['D:\\missing'] });
+    await expect(parse('./dist', 'wbe1:/srv')).rejects.toThrow(/No saved machine named "wbe1"/);
   });
 });
 
