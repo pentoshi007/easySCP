@@ -49,8 +49,8 @@ export const COMMANDS: CommandInfo[] = [
   {
     name: 'send',
     aliases: ['up', 'push', 'upload'],
-    args: '[host] [files...]',
-    summary: 'Upload files or folders to a machine',
+    args: '[host[:folder]...] [files...]',
+    summary: 'Upload files or folders to one or more machines',
     group: 'Transfer',
     flags: ['to', ...POLICY_FLAGS],
   },

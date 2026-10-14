@@ -9,7 +9,7 @@ import { recordTransfer } from '../transfer/history.js';
 import { formatBytes, plural } from '../util/format.js';
 import { addHost } from './add.js';
 import { done, type Outcome } from './outcome.js';
-import { remoteStart } from './transfer.js';
+import { remoteStart } from './places.js';
 
 async function localStart(host: Host): Promise<string> {
   if (host.localDir && (await localFs.stat(host.localDir))?.kind === 'dir') return host.localDir;

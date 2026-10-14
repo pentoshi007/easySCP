@@ -108,6 +108,20 @@ export async function clearHistory(): Promise<void> {
 export async function forgetHostHistory(hostId: string): Promise<void> {
   await store.update((file) => {
     file.entries = file.entries.flatMap((entry) => {
+      if (entry.direction === 'upload' && entry.targets?.length) {
+        const targets = entry.targets.filter((target) => target.hostId !== hostId);
+        const [first] = targets;
+        if (!first) return [];
+        return [
+          {
+            ...entry,
+            hostId: first.hostId,
+            hostName: first.hostName,
+            destination: first.destination,
+            targets,
+          },
+        ];
+      }
       if (entry.hostId === hostId) return [];
       if (!entry.targets) return [entry];
       const targets = entry.targets.filter((target) => target.hostId !== hostId);

@@ -142,7 +142,7 @@ class StagedFile {
 }
 
 export class Stage implements FileSystem {
-  readonly local = false;
+  readonly local: boolean;
   readonly label: string;
   readonly path: PlatformPath;
   readonly home: string;
@@ -169,13 +169,14 @@ export class Stage implements FileSystem {
     readonly dir: string,
     readonly budget: number,
   ) {
+    this.local = source.local;
     this.label = source.label;
     this.path = source.path;
     this.home = source.home;
     this.chunkSize = source.chunkSize;
     this.parallelChunks = source.parallelChunks;
     this.blockSize = source.chunkSize;
-    process.once('exit', this.cleanup);
+    if (dir) process.once('exit', this.cleanup);
   }
 
   get closed(): boolean {
@@ -266,8 +267,10 @@ export class Stage implements FileSystem {
       await Promise.all(files.map((file) => this.evict(file)));
     } finally {
       this.files.clear();
-      await rm(this.dir, { recursive: true, force: true }).catch(() => undefined);
-      process.off('exit', this.cleanup);
+      if (this.dir) {
+        await rm(this.dir, { recursive: true, force: true }).catch(() => undefined);
+        process.off('exit', this.cleanup);
+      }
     }
   }
 
@@ -299,7 +302,7 @@ export class Stage implements FileSystem {
       entry,
       this.blockSize,
       join(this.dir, String(++this.counter)),
-      shared && !this.finished,
+      shared && !this.finished && this.dir !== '' && this.budget > 0,
     );
     this.files.set(file, created);
     return created;
@@ -435,6 +438,10 @@ async function freeSpace(dir: string): Promise<number> {
 export interface StageOptions {
   root?: string;
   budget?: number;
+}
+
+export function passThrough(source: FileSystem): Stage {
+  return new Stage(source, '', 0);
 }
 
 export async function createStage(source: FileSystem, options: StageOptions = {}): Promise<Stage> {

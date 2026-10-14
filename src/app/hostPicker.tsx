@@ -41,6 +41,28 @@ export async function chooseHost(
   return picked;
 }
 
+export async function chooseHosts(
+  ctx: Context,
+  options: { title: string; onAdd?: () => Promise<Host> },
+): Promise<Host[]> {
+  const hosts = await listHosts();
+  if (hosts.length === 0) return [await chooseHost(ctx, options)];
+  const choices: Choice<Host | typeof ADD>[] = hosts.map(hostChoice);
+  if (options.onAdd)
+    choices.push({ value: ADD, label: '+ Add a new machine', color: colors.success });
+  const picked = await ctx.ui.multiselect<Host | typeof ADD>(options.title, {
+    choices,
+    selected: hosts.length === 1 ? hosts : [],
+    required: true,
+  });
+  const chosen = picked.filter((value): value is Host => value !== ADD);
+  if (picked.includes(ADD)) {
+    const added = await (options.onAdd as () => Promise<Host>)();
+    if (!chosen.some((host) => host.id === added.id)) chosen.push(added);
+  }
+  return chosen;
+}
+
 export function HostName({ host }: { host: Host }) {
   return (
     <Text>

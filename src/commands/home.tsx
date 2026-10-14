@@ -166,7 +166,7 @@ export async function homeCommand(ctx: Context): Promise<Outcome | undefined> {
       choices.push({ value: 'repeat', label: 'Repeat last transfer', hint: label });
     }
     choices.push(
-      { value: 'send', label: 'Send files', hint: 'upload to a machine' },
+      { value: 'send', label: 'Send files', hint: 'upload to one or more machines' },
       { value: 'receive', label: 'Receive files', hint: 'download from a machine' },
     );
     if (hosts.length > 1) {

@@ -24,6 +24,39 @@ function splitMachine(token: string) {
   };
 }
 
+export interface SendRequest {
+  paths: string[];
+  destinations: CopyDestination[];
+}
+
+export async function parseSendTokens(
+  tokens: string[],
+  hosts: Host[],
+  isLocalPath: (token: string) => Promise<boolean>,
+): Promise<SendRequest> {
+  const paths: string[] = [];
+  const destinations: CopyDestination[] = [];
+  for (const token of tokens) {
+    const { name, path, qualified } = splitMachine(token);
+    const host = hosts.find((candidate) => sameName(candidate.name, name));
+    if (host) {
+      if (!destinations.some((entry) => entry.host.id === host.id && entry.dir === path)) {
+        destinations.push({ host, dir: path });
+      }
+      continue;
+    }
+    const looksLikeMachine = qualified && name.length > 1 && !/[\\/]/.test(name);
+    if (looksLikeMachine && !(await isLocalPath(token))) {
+      throw new AppError(
+        `No saved machine named "${name}"`,
+        'Run `easyscp list` to see saved machines.',
+      );
+    }
+    paths.push(token);
+  }
+  return { paths, destinations };
+}
+
 export function parseCopyTokens(tokens: string[], hosts: Host[]): CopyRequest {
   const find = (name: string) => hosts.find((host) => sameName(host.name, name));
   const unknown = (name: string) =>
