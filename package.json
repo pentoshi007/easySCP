@@ -1,6 +1,6 @@
 {
   "name": "@pentoshi/easyscp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Send, receive and copy files over SSH by picking them, not typing paths",
   "keywords": [
     "scp",
