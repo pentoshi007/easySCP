@@ -10,6 +10,11 @@ export interface ExecResult {
   stderr: string;
 }
 
+export interface ExecOptions {
+  signal?: AbortSignal;
+  input?: string | Buffer;
+}
+
 export interface StreamExecOptions {
   signal?: AbortSignal;
   onLine: (line: string) => boolean | undefined;
@@ -80,12 +85,13 @@ export class Session {
     this.connection.close();
   }
 
-  exec(command: string, signal?: AbortSignal): Promise<ExecResult> {
+  exec(command: string, { signal, input }: ExecOptions = {}): Promise<ExecResult> {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     return this.run(command, signal, (stream) => {
       stream.on('data', (chunk: Buffer) => stdout.push(chunk));
       stream.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+      if (input !== undefined) stream.end(input);
     }).then((code) => ({
       code,
       stdout: Buffer.concat(stdout).toString('utf8'),
@@ -133,6 +139,9 @@ export class Session {
           return;
         }
         const onAbort = () => {
+          try {
+            stream.signal('TERM');
+          } catch {}
           stream.close();
           reject(new CancelledError());
         };

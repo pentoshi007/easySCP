@@ -1,6 +1,6 @@
 import { isPartName } from '../fs/names.js';
 import { isHidden } from '../fs/ops.js';
-import type { Entry, FileSystem } from '../fs/types.js';
+import type { Entry } from '../fs/types.js';
 import { formatBytes, plural, printable } from '../util/format.js';
 import { fuzzyMatch } from '../util/fuzzy.js';
 
@@ -68,18 +68,4 @@ export function selectionInfo(entries: Entry[], selected: ReadonlySet<string>): 
   return bytes > 0
     ? `${chosen.length} selected, ${formatBytes(bytes)}`
     : `${chosen.length} selected`;
-}
-
-const WINDOWS_RESERVED = /[<>:"|?*]/;
-
-export function invalidName(fs: FileSystem, name: string): string | undefined {
-  const value = name.trim();
-  if (!value) return 'Enter a name';
-  if (value === '.' || value === '..') return 'That name is reserved';
-  const windows = fs.local && fs.path.sep === '\\';
-  if (value.includes('/') || (windows && value.includes('\\'))) {
-    return 'Names can’t contain slashes';
-  }
-  if (windows && WINDOWS_RESERVED.test(value)) return 'Names can’t contain < > : " | ? *';
-  return undefined;
 }

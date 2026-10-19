@@ -1,46 +1,54 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { describeError } from '../../core/errors.js';
-import type { Entry, FileSystem } from '../../fs/types.js';
-import { DeepIndex, type DirCache } from './cache.js';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import type { FileSystem } from '../../fs/types.js';
+import { DeepIndex, type DirCache, type DirSnapshot } from './cache.js';
 
-export interface Listing {
+export interface Listing extends DirSnapshot {
   dir: string;
-  entries: Entry[] | undefined;
-  error: string | undefined;
 }
 
-export function useListing(cache: DirCache, dir: string, version: number): Listing {
-  const [state, setState] = useState<Listing>(() => ({
-    dir,
-    entries: cache.peek(dir),
-    error: undefined,
-  }));
+const FRESH_FOR = 1000;
+const LOCAL_POLL_INTERVAL = 2000;
+const REMOTE_POLL_INTERVAL = 4000;
+const MAX_POLL_INTERVAL = 30_000;
+const POLL_COST_FACTOR = 10;
+
+function pollDelay(fs: FileSystem, took: number): number {
+  const base = fs.local ? LOCAL_POLL_INTERVAL : REMOTE_POLL_INTERVAL;
+  return Math.min(MAX_POLL_INTERVAL, Math.max(base, took * POLL_COST_FACTOR));
+}
+
+export function useListing(cache: DirCache, dir: string, live = true): Listing {
+  const subscribe = useCallback(
+    (listener: () => void) => cache.subscribe(dir, listener),
+    [cache, dir],
+  );
+  const snapshot = useSyncExternalStore(subscribe, () => cache.snapshot(dir));
 
   useEffect(() => {
-    let live = true;
-    const cached = version === 0 ? cache.peek(dir) : undefined;
-    setState((previous) => ({
-      dir,
-      entries: cached ?? (previous.dir === dir ? previous.entries : undefined),
-      error: undefined,
-    }));
-    if (!cached) {
-      cache.load(dir, version > 0).then(
-        (entries) => {
-          if (live) setState({ dir, entries, error: undefined });
-        },
-        (error: unknown) => {
-          if (live) setState({ dir, entries: undefined, error: describeError(error).message });
-        },
-      );
-    }
-    return () => {
-      live = false;
-    };
-  }, [cache, dir, version]);
+    void cache.revalidate(dir, FRESH_FOR);
+  }, [cache, dir]);
 
-  if (state.dir === dir) return state;
-  return { dir, entries: cache.peek(dir), error: undefined };
+  useEffect(() => {
+    if (!live) return;
+    let active = true;
+    let timer: NodeJS.Timeout | undefined;
+    const poll = async () => {
+      if (cache.fs.closed) return;
+      const started = performance.now();
+      await cache.revalidate(dir, FRESH_FOR);
+      if (active) timer = setTimeout(poll, pollDelay(cache.fs, performance.now() - started));
+    };
+    timer = setTimeout(poll, pollDelay(cache.fs, 0));
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [cache, dir, live]);
+
+  return useMemo(
+    () => ({ dir, entries: snapshot.entries, error: snapshot.error, revision: snapshot.revision }),
+    [dir, snapshot],
+  );
 }
 
 const noop = () => () => {};
@@ -50,24 +58,35 @@ export interface DeepView {
   version: number;
 }
 
-export function useDeepIndex(fs: FileSystem, root: string, active: boolean): DeepView | undefined {
-  const indexes = useRef(new Map<string, DeepIndex>());
+interface Indexed {
+  index: DeepIndex;
+  generation: number;
+}
+
+export function useDeepIndex(
+  fs: FileSystem,
+  root: string,
+  active: boolean,
+  generation = 0,
+): DeepView | undefined {
+  const indexes = useRef(new Map<string, Indexed>());
 
   useEffect(() => {
     const owned = indexes.current;
     return () => {
-      for (const index of owned.values()) index.abort();
+      for (const { index } of owned.values()) index.abort();
       owned.clear();
     };
   }, []);
 
   let index: DeepIndex | undefined;
   if (active) {
-    index = indexes.current.get(root);
-    if (!index || index.status === 'error') {
-      index?.abort();
+    const known = indexes.current.get(root);
+    index = known?.index;
+    if (!known || known.generation !== generation || known.index.status === 'error') {
+      known?.index.abort();
       index = new DeepIndex(fs, root);
-      indexes.current.set(root, index);
+      indexes.current.set(root, { index, generation });
     }
   }
 

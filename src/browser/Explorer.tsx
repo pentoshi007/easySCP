@@ -2,7 +2,8 @@ import { Box, type DOMElement, type Key, Text, useBoxMetrics, useInput, useWindo
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { conflictQuestion, summarizeResult } from '../app/transferText.js';
 import { AppError, describeError } from '../core/errors.js';
-import { displayPath } from '../fs/ops.js';
+import { invalidName } from '../fs/names.js';
+import { createFolder, displayPath } from '../fs/ops.js';
 import type { Entry, FileSystem } from '../fs/types.js';
 import type { Direction } from '../transfer/history.js';
 import { planTransfer } from '../transfer/plan.js';
@@ -25,8 +26,8 @@ import { TextPrompt } from '../ui/prompts/TextPrompt.js';
 import { colors, symbols, type Tone, toneColor, toneSymbol } from '../ui/theme.js';
 import type { PromptControls } from '../ui/ui.js';
 import { formatBytes, formatDate, formatMode, printable } from '../util/format.js';
-import { createFolder, deleteEntries, renameEntry } from './actions.js';
-import { describeItems, invalidName, pickTargets } from './model.js';
+import { renameEntry } from './actions.js';
+import { describeItems, pickTargets } from './model.js';
 import { PaneView } from './PaneView.js';
 import { type Pane, usePane } from './usePane.js';
 
@@ -383,10 +384,19 @@ export function Explorer({
     if (!confirmed) return;
     const abort = new AbortController();
     controller.current = abort;
-    setJob({ kind: 'task', label: `Deleting ${what}` });
+    const label = `Deleting ${what}`;
+    setJob({ kind: 'task', label });
     try {
-      await deleteEntries(target.fs, items, abort.signal, (done) =>
-        setJob({ kind: 'task', label: `Deleting ${what} (${done}/${items.length})` }),
+      await target.fs.remove(
+        items.map((entry) => entry.path),
+        {
+          signal: abort.signal,
+          onProgress: (removed) =>
+            setJob({
+              kind: 'task',
+              label: `${label} ${symbols.dot} ${removed.toLocaleString()} removed`,
+            }),
+        },
       );
     } finally {
       target.refresh();
@@ -612,7 +622,7 @@ export function Explorer({
         </Box>
         <Box flexShrink={0}>
           <Text color={colors.muted}>
-            <Text bold>?</Text> help{' '}
+            <Text bold>ctrl+r</Text> refresh {symbols.dot} <Text bold>?</Text> help{' '}
           </Text>
         </Box>
       </Box>

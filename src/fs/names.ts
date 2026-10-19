@@ -2,6 +2,7 @@ import type { FileSystem } from './types.js';
 
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
 const WINDOWS_INVALID = new Set(['<', '>', ':', '"', '|', '?', '*', '\\', '/']);
+const WINDOWS_FORBIDDEN = /[<>:"|?*]/;
 
 function replaceInvalid(name: string): string {
   let out = '';
@@ -15,6 +16,18 @@ export function isPlainName(name: string): boolean {
   return (
     name !== '' && name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\0')
   );
+}
+
+export function invalidName(fs: FileSystem, name: string): string | undefined {
+  const value = name.trim();
+  if (!value) return 'Enter a name';
+  if (value === '.' || value === '..') return 'That name is reserved';
+  const windows = fs.local && fs.path.sep === '\\';
+  if (value.includes('/') || (windows && value.includes('\\'))) {
+    return 'Names can’t contain slashes';
+  }
+  if (windows && WINDOWS_FORBIDDEN.test(value)) return 'Names can’t contain < > : " | ? *';
+  return undefined;
 }
 
 export function portableName(fs: FileSystem, name: string): string {

@@ -22,6 +22,11 @@ export interface Attributes {
   mtime?: number;
 }
 
+export interface RemoveOptions {
+  signal?: AbortSignal;
+  onProgress?: (removed: number) => void;
+}
+
 export interface Reader {
   read(buffer: Buffer, offset: number, length: number, position: number): Promise<number>;
   close(): Promise<void>;
@@ -49,6 +54,7 @@ export interface FileSystem {
   rename(from: string, to: string): Promise<void>;
   removeFile(target: string): Promise<void>;
   removeDir(target: string): Promise<void>;
+  remove(targets: readonly string[], options?: RemoveOptions): Promise<void>;
   openRead(file: string): Promise<Reader>;
   openWrite(file: string, append: boolean): Promise<Writer>;
 }

@@ -15,6 +15,7 @@ export interface Shortcut {
 export type Row =
   | { kind: 'entry'; entry: Entry; label: string; positions: number[]; dim: boolean }
   | { kind: 'here'; path: string }
+  | { kind: 'new'; dir: string }
   | { kind: 'create'; path: string; name: string }
   | { kind: 'shortcut'; path: string; label: string };
 
@@ -43,6 +44,8 @@ export function rowKey(row: Row): string {
       return `e:${row.entry.path}`;
     case 'here':
       return 'here';
+    case 'new':
+      return 'new';
     case 'create':
       return `c:${row.path}`;
     default:
@@ -112,7 +115,7 @@ export function buildRows({
   }
 
   if (mode === 'dir' && !filter) {
-    rows.push({ kind: 'here', path: dir });
+    rows.push({ kind: 'here', path: dir }, { kind: 'new', dir });
     if (!view.typedPath) {
       for (const shortcut of shortcuts) {
         if (shortcut.path !== dir) rows.push({ kind: 'shortcut', ...shortcut });

@@ -3,7 +3,15 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { mapLimit } from '../util/concurrency.js';
-import type { Attributes, Entry, FileSystem, Reader, ScanEntry, Writer } from './types.js';
+import type {
+  Attributes,
+  Entry,
+  FileSystem,
+  Reader,
+  RemoveOptions,
+  ScanEntry,
+  Writer,
+} from './types.js';
 
 const WINDOWS = process.platform === 'win32';
 
@@ -142,6 +150,13 @@ export class LocalFileSystem implements FileSystem {
 
   removeDir(target: string): Promise<void> {
     return fs.rmdir(target);
+  }
+
+  async remove(targets: readonly string[], { signal }: RemoveOptions = {}): Promise<void> {
+    for (const target of targets) {
+      signal?.throwIfAborted();
+      await fs.rm(target, { recursive: true, force: true, maxRetries: WINDOWS ? 4 : 0 });
+    }
   }
 
   async openRead(file: string): Promise<Reader> {

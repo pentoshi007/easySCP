@@ -6,51 +6,115 @@ import type { Entry, FileSystem } from '../../fs/types.js';
 const MAX_CACHED_DIRS = 256;
 const NOTIFY_INTERVAL = 120;
 
+export interface DirSnapshot {
+  entries: Entry[] | undefined;
+  error: string | undefined;
+  revision: number;
+}
+
+interface Cached extends DirSnapshot {
+  loadedAt: number;
+}
+
+interface Request {
+  ticket: number;
+  promise: Promise<void>;
+}
+
+const UNLOADED: DirSnapshot = { entries: undefined, error: undefined, revision: 0 };
+
+function sameEntries(previous: Entry[], next: Entry[]): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((entry, index) => {
+      const other = next[index] as Entry;
+      return (
+        entry.path === other.path &&
+        entry.kind === other.kind &&
+        entry.link === other.link &&
+        entry.size === other.size &&
+        entry.mtime === other.mtime &&
+        entry.mode === other.mode
+      );
+    })
+  );
+}
+
 export class DirCache {
-  private readonly entries = new Map<string, Entry[]>();
-  private readonly pending = new Map<string, Promise<Entry[]>>();
+  private readonly listings = new Map<string, Cached>();
+  private readonly requests = new Map<string, Request>();
+  private readonly listeners = new Map<string, Set<() => void>>();
+  private tickets = 0;
 
   constructor(readonly fs: FileSystem) {}
 
-  peek(dir: string): Entry[] | undefined {
-    const hit = this.entries.get(dir);
-    if (hit) {
-      this.entries.delete(dir);
-      this.entries.set(dir, hit);
-    }
-    return hit;
+  snapshot(dir: string): DirSnapshot {
+    return this.listings.get(dir) ?? UNLOADED;
   }
 
-  load(dir: string, force = false): Promise<Entry[]> {
-    if (!force) {
-      const hit = this.peek(dir);
-      if (hit) return Promise.resolve(hit);
-    }
-    const inflight = this.pending.get(dir);
-    if (inflight) return inflight;
-    const request = this.fs
-      .list(dir)
-      .then((list) => {
-        const sorted = list.sort(compareEntries);
-        this.entries.set(dir, sorted);
-        while (this.entries.size > MAX_CACHED_DIRS) {
-          const oldest = this.entries.keys().next().value as string;
-          this.entries.delete(oldest);
-        }
-        return sorted;
-      })
-      .finally(() => this.pending.delete(dir));
-    this.pending.set(dir, request);
-    return request;
+  subscribe(dir: string, listener: () => void): () => void {
+    const listeners = this.listeners.get(dir) ?? new Set();
+    listeners.add(listener);
+    this.listeners.set(dir, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(dir);
+    };
+  }
+
+  refresh(dir: string): Promise<void> {
+    return this.fetch(dir);
+  }
+
+  revalidate(dir: string, maxAge = 0): Promise<void> {
+    const pending = this.requests.get(dir);
+    if (pending) return pending.promise;
+    const cached = this.listings.get(dir);
+    if (cached && performance.now() - cached.loadedAt < maxAge) return Promise.resolve();
+    return this.fetch(dir);
   }
 
   prefetch(dir: string): void {
-    if (this.entries.has(dir) || this.pending.has(dir) || this.fs.closed) return;
-    this.load(dir).catch(() => undefined);
+    if (this.listings.has(dir) || this.requests.has(dir) || this.fs.closed) return;
+    void this.fetch(dir);
   }
 
-  invalidate(dir: string): void {
-    this.entries.delete(dir);
+  private fetch(dir: string): Promise<void> {
+    const ticket = ++this.tickets;
+    const promise = this.fs.list(dir).then(
+      (entries) => this.settle(dir, ticket, entries.sort(compareEntries), undefined),
+      (error: unknown) => this.settle(dir, ticket, undefined, describeError(error).message),
+    );
+    this.requests.set(dir, { ticket, promise });
+    return promise;
+  }
+
+  private settle(
+    dir: string,
+    ticket: number,
+    entries: Entry[] | undefined,
+    error: string | undefined,
+  ): void {
+    if (this.requests.get(dir)?.ticket !== ticket) return;
+    this.requests.delete(dir);
+    const previous = this.listings.get(dir)?.entries;
+    const kept = entries && previous && sameEntries(previous, entries) ? previous : entries;
+    this.listings.delete(dir);
+    this.listings.set(dir, {
+      entries: kept ?? previous,
+      error,
+      revision: ticket,
+      loadedAt: performance.now(),
+    });
+    this.evict();
+    for (const listener of [...(this.listeners.get(dir) ?? [])]) listener();
+  }
+
+  private evict(): void {
+    for (const dir of this.listings.keys()) {
+      if (this.listings.size <= MAX_CACHED_DIRS) return;
+      if (!this.listeners.has(dir)) this.listings.delete(dir);
+    }
   }
 }
 

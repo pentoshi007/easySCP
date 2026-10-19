@@ -230,6 +230,10 @@ export class Stage implements FileSystem {
     this.readOnly();
   }
 
+  async remove(): Promise<void> {
+    this.readOnly();
+  }
+
   async openWrite(): Promise<Writer> {
     this.readOnly();
   }

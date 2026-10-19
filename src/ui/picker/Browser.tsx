@@ -1,12 +1,16 @@
 import { Box, type Key, Text, useInput, usePaste, useWindowSize } from 'ink';
 import { useEffect, useMemo, useState } from 'react';
-import { displayPath, expandInput, parentDir } from '../../fs/ops.js';
+import { describeError } from '../../core/errors.js';
+import { invalidName } from '../../fs/names.js';
+import { createFolder, displayPath, ensureDir, expandInput, parentDir } from '../../fs/ops.js';
 import type { Entry, FileSystem } from '../../fs/types.js';
 import { parseDroppedPaths } from '../../util/dropped.js';
-import { formatBytes, formatRelative, plural } from '../../util/format.js';
+import { formatBytes, formatRelative, plural, printable } from '../../util/format.js';
 import { Highlight } from '../components/Highlight.js';
 import { type Hint, KeyHints } from '../components/KeyHints.js';
 import { Spinner } from '../components/Spinner.js';
+import { TextField } from '../components/TextField.js';
+import { applyKey, createEditor, type EditorState, insertText } from '../editor.js';
 import { clampCursor, type ListCursor, moveCursor } from '../list.js';
 import { colors, symbols, type Tone, toneColor } from '../theme.js';
 import { cacheFor } from './cache.js';
@@ -27,6 +31,18 @@ interface Notice {
   text: string;
   tone: Tone;
 }
+
+interface Naming {
+  dir: string;
+  editor: EditorState;
+}
+
+interface CursorState extends ListCursor {
+  key: string;
+  row: string;
+}
+
+type ActionRow = Exclude<Row, { kind: 'entry' }>;
 
 const PREFETCH_DELAY = 120;
 
@@ -55,6 +71,19 @@ function suffix(entry: Entry): string {
   return '';
 }
 
+function actionLook(row: ActionRow): [icon: string, label: string, color: string | undefined] {
+  switch (row.kind) {
+    case 'here':
+      return [symbols.success, 'Use this folder', colors.success];
+    case 'new':
+      return ['+', 'New folder', colors.success];
+    case 'create':
+      return ['+', `New folder "${row.name}"`, colors.success];
+    default:
+      return [symbols.arrowRight, row.label, undefined];
+  }
+}
+
 export function Browser({
   fs,
   start,
@@ -69,17 +98,19 @@ export function Browser({
   const [cwd, setCwd] = useState(start);
   const [query, setQuery] = useState('');
   const [deepOn, setDeepOn] = useState(false);
-  const [version, setVersion] = useState(0);
+  const [deepGeneration, setDeepGeneration] = useState(0);
   const [focus, setFocus] = useState<string>();
   const [selected, setSelected] = useState<Map<string, Entry>>(() => new Map());
   const [notice, setNotice] = useState<Notice>();
+  const [naming, setNaming] = useState<Naming>();
+  const [busy, setBusy] = useState<string>();
 
   const view = useMemo(
     () => (deepOn ? { dir: cwd, filter: query, typedPath: false } : splitQuery(fs, cwd, query)),
     [deepOn, fs, cwd, query],
   );
-  const listing = useListing(cache, view.dir, version);
-  const deepView = useDeepIndex(fs, cwd, deepOn);
+  const listing = useListing(cache, view.dir, !deepOn);
+  const deepView = useDeepIndex(fs, cwd, deepOn, deepGeneration);
   const deep = deepView?.index;
   const rows = useMemo(
     () => buildRows({ fs, mode, view, entries: listing.entries, deep: deepView, shortcuts }),
@@ -88,16 +119,27 @@ export function Browser({
 
   const pageSize = Math.max(4, Math.min(12, height - 10));
   const viewKey = `${deepOn}\u0000${view.dir}\u0000${view.filter}`;
-  const [cursorState, setCursorState] = useState({ key: '', index: 0, offset: 0 });
-  const focusIndex = focus
-    ? rows.findIndex((row) => row.kind === 'entry' && row.entry.path === focus)
-    : -1;
-  const raw: ListCursor =
-    cursorState.key === viewKey
-      ? cursorState
-      : { index: Math.max(0, focusIndex), offset: Math.max(0, focusIndex - (pageSize >> 1)) };
+  const [cursorState, setCursorState] = useState<CursorState>({
+    key: '',
+    index: 0,
+    offset: 0,
+    row: '',
+  });
+  const ownCursor = cursorState.key === viewKey;
+  const anchored =
+    ownCursor && cursorState.row ? rows.findIndex((row) => rowKey(row) === cursorState.row) : -1;
+  const focusIndex =
+    !ownCursor && focus
+      ? rows.findIndex((row) => row.kind === 'entry' && row.entry.path === focus)
+      : -1;
+  const raw: ListCursor = ownCursor
+    ? { index: anchored >= 0 ? anchored : cursorState.index, offset: cursorState.offset }
+    : { index: Math.max(0, focusIndex), offset: Math.max(0, focusIndex - (pageSize >> 1)) };
   const cursor = clampCursor(raw, rows.length, pageSize);
-  const setCursor = (next: ListCursor) => setCursorState({ key: viewKey, ...next });
+  const setCursor = (next: ListCursor) => {
+    const row = rows[next.index];
+    setCursorState({ key: viewKey, ...next, row: row ? rowKey(row) : '' });
+  };
   const current = rows[cursor.index];
   const currentEntry = current?.kind === 'entry' ? current.entry : undefined;
 
@@ -150,11 +192,50 @@ export function Browser({
     });
   };
 
+  const fail = (error: unknown) =>
+    setNotice({ text: describeError(error).message, tone: 'danger' });
+
+  const createNamed = ({ dir, editor }: Naming) => {
+    const name = editor.value.trim();
+    const problem = invalidName(fs, name);
+    if (problem) {
+      setNotice({ text: problem, tone: 'danger' });
+      return;
+    }
+    setBusy(`Creating ${printable(name)}`);
+    createFolder(fs, dir, name)
+      .then(async (created) => {
+        await cache.refresh(dir);
+        setNaming(undefined);
+        navigate(created);
+        setNotice({ text: `Created ${printable(name)}/`, tone: 'success' });
+      })
+      .catch(fail)
+      .finally(() => setBusy(undefined));
+  };
+
+  const createAndUse = (row: Extract<Row, { kind: 'create' }>) => {
+    setBusy(`Creating ${printable(row.name)}`);
+    ensureDir(fs, row.path)
+      .then(() => onSubmit([row.path]))
+      .catch(fail)
+      .finally(() => setBusy(undefined));
+  };
+
   const activate = (row: Row | undefined) => {
     if (!row) return;
-    if (row.kind === 'here' || row.kind === 'create' || row.kind === 'shortcut') {
-      onSubmit([row.path]);
-      return;
+    switch (row.kind) {
+      case 'here':
+      case 'shortcut':
+        onSubmit([row.path]);
+        return;
+      case 'new':
+        setNaming({ dir: row.dir, editor: createEditor() });
+        setNotice(undefined);
+        return;
+      case 'create':
+        createAndUse(row);
+        return;
     }
     const { entry } = row;
     if (mode === 'files' && selected.size > 0) {
@@ -208,6 +289,12 @@ export function Browser({
   };
 
   const receiveText = (text: string) => {
+    if (busy) return;
+    if (naming) {
+      setNaming({ ...naming, editor: insertText(naming.editor, text) });
+      setNotice(undefined);
+      return;
+    }
     handleDrop(text).then(
       (dropped) => {
         if (!dropped) typeText(text.replace(/\r?\n/g, ' '));
@@ -218,7 +305,29 @@ export function Browser({
 
   usePaste(receiveText);
 
+  const editName = (state: Naming, input: string, key: Key) => {
+    if (key.escape) {
+      setNaming(undefined);
+      setNotice(undefined);
+      return;
+    }
+    if (key.return) {
+      createNamed(state);
+      return;
+    }
+    const editor = applyKey(state.editor, input, key);
+    if (editor) {
+      setNaming({ ...state, editor });
+      setNotice(undefined);
+    }
+  };
+
   const handleKey = (input: string, key: Key) => {
+    if (busy) return;
+    if (naming) {
+      editName(naming, input, key);
+      return;
+    }
     const moved = moveCursor(cursor, key, input, rows.length, pageSize);
     if (moved) {
       setCursor(moved);
@@ -273,8 +382,9 @@ export function Browser({
           setNotice(undefined);
           return;
         case 'r':
-          cache.invalidate(view.dir);
-          setVersion((value) => value + 1);
+          void cache.refresh(view.dir);
+          if (deepOn) setDeepGeneration((value) => value + 1);
+          setNotice(undefined);
           return;
         case 'a':
           if (mode === 'files') toggleAll();
@@ -306,7 +416,9 @@ export function Browser({
   const loading = !deepOn && !listing.entries && !listing.error;
 
   let status: { text: string; tone?: Tone; spinner?: boolean } | undefined;
-  if (listing.error && !deepOn) status = { text: listing.error, tone: 'danger' };
+  if (busy) status = { text: `${busy}${symbols.ellipsis}`, spinner: true };
+  else if (naming) status = notice;
+  else if (listing.error && !deepOn) status = { text: listing.error, tone: 'danger' };
   else if (notice) status = notice;
   else if (deep) {
     const count = deep.count.toLocaleString();
@@ -334,18 +446,25 @@ export function Browser({
   const selectedDirs = selectedEntries.filter((entry) => entry.kind === 'dir').length;
   const enterLabel = (() => {
     if (mode === 'files' && selected.size > 0) return `${action} ${selected.size}`;
+    if (current?.kind === 'new') return 'new folder';
     if (current?.kind === 'entry' && current.entry.kind === 'dir') return 'open';
     if (mode === 'dir' && current?.kind === 'entry') return 'open';
     return action;
   })();
-  const hints: Hint[] = [
-    ['↑↓', 'move'],
-    ['←→', 'folders'],
-  ];
-  if (mode === 'files') hints.push([query ? 'tab' : 'space', 'select']);
-  hints.push(['enter', enterLabel]);
-  hints.push(['ctrl+f', deepOn ? 'browse' : 'search all']);
-  hints.push(['esc', query || deepOn ? 'clear' : 'back']);
+  const hints: (Hint | false)[] = naming
+    ? [
+        ['enter', 'create'],
+        ['esc', 'cancel'],
+      ]
+    : [
+        ['↑↓', 'move'],
+        ['←→', 'folders'],
+        mode === 'files' && [query ? 'tab' : 'space', 'select'],
+        ['enter', enterLabel],
+        ['ctrl+f', deepOn ? 'browse' : 'search all'],
+        ['ctrl+r', 'refresh'],
+        ['esc', query || deepOn ? 'clear' : 'back'],
+      ];
 
   return (
     <>
@@ -355,20 +474,32 @@ export function Browser({
         <Text bold>{location}</Text>
         {deepOn ? <Text color={colors.muted}> {symbols.dot} all subfolders</Text> : null}
       </Text>
-      <Text>
-        <Text color={deepOn ? colors.warning : colors.accent}>{symbols.pointer} </Text>
-        {query ? (
-          <Text>
-            {query}
-            <Text inverse> </Text>
-          </Text>
-        ) : (
-          <Text color={colors.muted}>
-            <Text inverse> </Text>
-            {deepOn ? ' type to search everything below' : ' type to filter or enter a path'}
-          </Text>
-        )}
-      </Text>
+      {naming ? (
+        <Text wrap="truncate-end">
+          <Text color={colors.success}>+ New folder </Text>
+          <TextField
+            value={naming.editor.value}
+            cursor={naming.editor.cursor}
+            width={Math.max(8, columns - 18)}
+            placeholder="name"
+          />
+        </Text>
+      ) : (
+        <Text>
+          <Text color={deepOn ? colors.warning : colors.accent}>{symbols.pointer} </Text>
+          {query ? (
+            <Text>
+              {query}
+              <Text inverse> </Text>
+            </Text>
+          ) : (
+            <Text color={colors.muted}>
+              <Text inverse> </Text>
+              {deepOn ? ' type to search everything below' : ' type to filter or enter a path'}
+            </Text>
+          )}
+        </Text>
+      )}
       {cursor.offset > 0 ? (
         <Text color={colors.muted}>
           {'  '}
@@ -438,12 +569,7 @@ function RowView({ row, active, mode, checked, wide, medium, fs }: RowViewProps)
   );
 
   if (row.kind !== 'entry') {
-    const [icon, label, color] =
-      row.kind === 'here'
-        ? [symbols.success, 'Use this folder', colors.success]
-        : row.kind === 'create'
-          ? ['+', `New folder "${row.name}"`, colors.success]
-          : [symbols.arrowRight, row.label, undefined];
+    const [icon, label, color] = actionLook(row);
     return (
       <Box>
         {pointer}
