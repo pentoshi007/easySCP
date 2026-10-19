@@ -38,21 +38,25 @@ interface PaneOptions {
 }
 
 const EMPTY = new Set<string>();
+const TOP: Anchor = { index: 0, offset: 0 };
 
 interface Focus {
   name: string;
-  stale: Entry[] | undefined;
+  after: number;
+}
+
+interface Anchor extends ListCursor {
+  name?: string;
 }
 
 export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions): Pane {
   const cache = cacheFor(fs);
   const [dir, setDir] = useState(start);
-  const [version, setVersion] = useState(0);
-  const [raw, setRaw] = useState<ListCursor>({ index: 0, offset: 0 });
+  const [raw, setRaw] = useState<Anchor>(TOP);
   const [selected, setSelected] = useState<ReadonlySet<string>>(EMPTY);
   const [filter, setFilterValue] = useState('');
   const [focus, setFocus] = useState<Focus | undefined>();
-  const listing = useListing(cache, dir, version);
+  const listing = useListing(cache, dir);
 
   const listed = useMemo(
     () => listedEntries(listing.entries, showHidden),
@@ -60,26 +64,26 @@ export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions)
   );
   const rows = useMemo(() => visibleRows(listed.pool, filter), [listed.pool, filter]);
   const settled =
-    focus !== undefined && listing.entries !== undefined && listing.entries !== focus.stale;
+    focus !== undefined && listing.entries !== undefined && listing.revision > focus.after;
   const focused = settled ? rows.findIndex((row) => row.entry.name === focus.name) : -1;
-  const cursor = clampCursor(
-    focused >= 0 ? { ...raw, index: focused } : raw,
-    rows.length,
-    pageSize,
-  );
+  const anchored =
+    raw.name === undefined ? -1 : rows.findIndex((row) => row.entry.name === raw.name);
+  const preferred = focused >= 0 ? focused : anchored >= 0 ? anchored : raw.index;
+  const cursor = clampCursor({ index: preferred, offset: raw.offset }, rows.length, pageSize);
+  const current = rows[cursor.index]?.entry;
 
   useEffect(() => {
     if (!settled) return;
     setFocus(undefined);
-    if (focused >= 0) setRaw(cursor);
-  }, [settled, focused, cursor]);
+    if (focused >= 0) setRaw({ ...cursor, name: current?.name });
+  }, [settled, focused, cursor, current]);
 
   const open = useCallback((next: string, focusName?: string) => {
     setDir(next);
-    setRaw({ index: 0, offset: 0 });
+    setRaw(TOP);
     setSelected(EMPTY);
     setFilterValue('');
-    setFocus(focusName === undefined ? undefined : { name: focusName, stale: undefined });
+    setFocus(focusName === undefined ? undefined : { name: focusName, after: 0 });
   }, []);
 
   const entries = listing.entries;
@@ -99,7 +103,7 @@ export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions)
     listed: listed.pool.length,
     hidden: listed.hidden,
     cursor,
-    current: rows[cursor.index]?.entry,
+    current,
     selected: liveSelection,
     filter,
     open,
@@ -108,12 +112,14 @@ export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions)
       if (parent) open(parent, fs.path.basename(dir));
     },
     refresh: (focusName?: string) => {
-      cache.invalidate(dir);
-      setVersion((value) => value + 1);
-      if (focusName !== undefined) setFocus({ name: focusName, stale: listing.entries });
+      if (focusName !== undefined) setFocus({ name: focusName, after: listing.revision });
+      void cache.refresh(dir);
     },
     moveTo: (index: number) =>
-      setRaw((current) => clampCursor({ ...current, index }, rows.length, pageSize)),
+      setRaw((previous) => {
+        const next = clampCursor({ ...previous, index }, rows.length, pageSize);
+        return { ...next, name: rows[next.index]?.entry.name };
+      }),
     toggle: (entry: Entry) =>
       setSelected((current) => {
         const next = new Set(current);
@@ -130,7 +136,7 @@ export function usePane({ fs, label, start, showHidden, pageSize }: PaneOptions)
     clearSelection: () => setSelected(EMPTY),
     setFilter: (value: string) => {
       setFilterValue(value);
-      setRaw({ index: 0, offset: 0 });
+      setRaw(TOP);
     },
   };
 }

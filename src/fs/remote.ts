@@ -2,7 +2,16 @@ import path from 'node:path';
 import type { SFTPWrapper, Attributes as SftpAttributes } from 'ssh2';
 import type { Session } from '../ssh/session.js';
 import { mapLimit } from '../util/concurrency.js';
-import type { Attributes, Entry, FileSystem, Reader, ScanEntry, Writer } from './types.js';
+import { removeTrees } from './ops.js';
+import type {
+  Attributes,
+  Entry,
+  FileSystem,
+  Reader,
+  RemoveOptions,
+  ScanEntry,
+  Writer,
+} from './types.js';
 
 const S_IFMT = 0o170000;
 const S_IFDIR = 0o040000;
@@ -24,6 +33,13 @@ interface DirItem {
 
 const SAFE_PACKET = 31 * 1024;
 const IN_FLIGHT_BYTES = 2 * 1024 * 1024;
+const SHELL_PROBE = 'pwd -P';
+const SHELL_PROBE_TIMEOUT = 5000;
+const SHELL_REMOVE = 'xargs -0 rm -rf --';
+
+function lastLine(text: string): string {
+  return text.replace(/\n$/, '').split('\n').at(-1) ?? '';
+}
 
 function sftpError(error: Error & { code?: number | string }, target: string): Error {
   const errno = typeof error.code === 'number' ? SFTP_ERRNO[error.code] : undefined;
@@ -146,6 +162,7 @@ export class RemoteFileSystem implements FileSystem {
   readonly chunkSize: number;
   readonly parallelChunks: number;
   private readonly sftp: SFTPWrapper;
+  private shellRemoval: Promise<boolean> | undefined;
 
   constructor(readonly session: Session) {
     this.sftp = session.sftp;
@@ -273,6 +290,40 @@ export class RemoteFileSystem implements FileSystem {
 
   removeDir(target: string): Promise<void> {
     return call<void>(this.session, target, (done) => this.sftp.rmdir(target, done));
+  }
+
+  async remove(targets: readonly string[], options: RemoveOptions = {}): Promise<void> {
+    if (targets.length === 0) return;
+    const remaining = (await this.canRemoveWithShell())
+      ? await this.removeWithShell(targets, options.signal)
+      : targets;
+    if (remaining.length > 0) await removeTrees(this, remaining, options);
+  }
+
+  private canRemoveWithShell(): Promise<boolean> {
+    if (this.session.windows) return Promise.resolve(false);
+    this.shellRemoval ??= this.session
+      .exec(SHELL_PROBE, { signal: AbortSignal.timeout(SHELL_PROBE_TIMEOUT), input: '' })
+      .then(
+        ({ code, stdout }) => code === 0 && lastLine(stdout) === this.home,
+        () => false,
+      );
+    return this.shellRemoval;
+  }
+
+  private async removeWithShell(
+    targets: readonly string[],
+    signal: AbortSignal | undefined,
+  ): Promise<string[]> {
+    try {
+      await this.session.exec(SHELL_REMOVE, { signal, input: `${targets.join('\0')}\0` });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+    }
+    const left = await mapLimit(targets, 32, async (target) =>
+      (await this.stat(target)) ? target : undefined,
+    );
+    return left.filter((target): target is string => target !== undefined);
   }
 
   async openRead(file: string): Promise<Reader> {

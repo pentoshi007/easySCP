@@ -4,15 +4,10 @@ import { render } from 'ink-testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renameEntry } from '../src/browser/actions.js';
 import { type CopyRecord, Explorer, type ExplorerExit } from '../src/browser/Explorer.js';
-import {
-  describeItems,
-  invalidName,
-  listedEntries,
-  pickTargets,
-  visibleRows,
-} from '../src/browser/model.js';
+import { describeItems, listedEntries, pickTargets, visibleRows } from '../src/browser/model.js';
 import { type Pane, usePane } from '../src/browser/usePane.js';
 import { localFs } from '../src/fs/local.js';
+import { invalidName } from '../src/fs/names.js';
 import type { Entry } from '../src/fs/types.js';
 import { symbols } from '../src/ui/theme.js';
 import { DOWN, ENTER, ESC, renderScreen, TAB, tick, waitFor } from './helpers/ink.js';

@@ -4,14 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHost } from '../src/core/hosts.js';
 import { setSecret } from '../src/core/secrets.js';
 import { localFs } from '../src/fs/local.js';
-import {
-  compareEntries,
-  displayPath,
-  ensureDir,
-  removeTree,
-  resolveInput,
-  uniqueName,
-} from '../src/fs/ops.js';
+import { compareEntries, displayPath, ensureDir, resolveInput, uniqueName } from '../src/fs/ops.js';
 import { RemoteFileSystem } from '../src/fs/remote.js';
 import { type IndexEntry, indexTree } from '../src/fs/search.js';
 import type { FileSystem } from '../src/fs/types.js';
@@ -112,7 +105,7 @@ function suite(name: string, setup: () => Promise<Fixture>, teardown?: () => Pro
     it('removes trees', async () => {
       await mkdir(fx.real('trash', 'inner'), { recursive: true });
       await writeFile(fx.real('trash', 'inner', 'f'), '1');
-      await removeTree(fx.fs, at('trash'));
+      await fx.fs.remove([at('trash')]);
       expect(await fx.fs.stat(at('trash'))).toBeUndefined();
     });
 

@@ -1,5 +1,10 @@
+import { AppError } from '../core/errors.js';
+import { Semaphore } from '../util/concurrency.js';
 import { printable } from '../util/format.js';
-import type { Entry, FileSystem } from './types.js';
+import type { Entry, FileSystem, RemoveOptions } from './types.js';
+
+const REMOVE_CONCURRENCY = 32;
+const REMOVE_PROGRESS_INTERVAL = 100;
 
 export function expandInput(fs: FileSystem, input: string): string {
   let value = input.trim();
@@ -74,22 +79,75 @@ export async function ensureDir(fs: FileSystem, dir: string): Promise<void> {
   }
 }
 
-export async function removeTree(
-  fs: FileSystem,
-  target: string,
-  signal?: AbortSignal,
-): Promise<void> {
+export async function createFolder(fs: FileSystem, dir: string, name: string): Promise<string> {
+  const target = fs.path.join(dir, name.trim());
+  if (await fs.stat(target)) throw new AppError(`${name.trim()} already exists`);
+  await fs.mkdir(target);
+  return target;
+}
+
+async function settleAll(tasks: Promise<void>[], signal?: AbortSignal): Promise<void> {
+  const results = await Promise.allSettled(tasks);
   signal?.throwIfAborted();
-  const entry = await fs.stat(target);
-  if (!entry) return;
-  if (entry.kind !== 'dir' || entry.link) {
-    await fs.removeFile(target);
-    return;
-  }
-  for (const child of await fs.scan(target)) {
-    await removeTree(fs, fs.path.join(target, child.name), signal);
-  }
-  await fs.removeDir(target);
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure) throw failure.reason;
+}
+
+export async function removeTrees(
+  fs: FileSystem,
+  targets: readonly string[],
+  { signal, onProgress }: RemoveOptions = {},
+): Promise<void> {
+  const limit = new Semaphore(REMOVE_CONCURRENCY);
+  let removed = 0;
+  let reportedAt = 0;
+
+  const run = <T>(task: () => Promise<T>) =>
+    limit.run(() => {
+      signal?.throwIfAborted();
+      return task();
+    });
+
+  const counted = () => {
+    removed++;
+    const now = performance.now();
+    if (onProgress && now - reportedAt >= REMOVE_PROGRESS_INTERVAL) {
+      reportedAt = now;
+      onProgress(removed);
+    }
+  };
+
+  const removeDir = async (dir: string): Promise<void> => {
+    const children = await run(() => fs.scan(dir));
+    await settleAll(
+      children.map((child) => removeEntry(fs.path.join(dir, child.name), child.dir)),
+      signal,
+    );
+    await run(() => fs.removeDir(dir));
+    counted();
+  };
+
+  const removeEntry = async (target: string, dir: boolean): Promise<void> => {
+    if (dir) return removeDir(target);
+    try {
+      await run(() => fs.removeFile(target));
+      counted();
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      const entry = await fs.stat(target);
+      if (!entry) return;
+      if (entry.kind === 'dir' && !entry.link) return removeDir(target);
+      throw error;
+    }
+  };
+
+  await settleAll(
+    targets.map(async (target) => {
+      const entry = await run(() => fs.stat(target));
+      if (entry) await removeEntry(target, entry.kind === 'dir' && !entry.link);
+    }),
+    signal,
+  );
 }
 
 export async function uniqueName(fs: FileSystem, dir: string, name: string): Promise<string> {

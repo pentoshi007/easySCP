@@ -34,7 +34,7 @@ easyscp copy build:releases/app-v2.4.0.tar.gz eu-west us-east -t releases
 
 ## Highlights
 
-- **Pick, don't type.** Fuzzy pickers for local and remote files, with `ctrl+f` to search subfolders. Drag and drop or paste paths if you prefer.
+- **Pick, don't type.** Fuzzy pickers for local and remote files, with `ctrl+f` to search subfolders. Drag and drop or paste paths if you prefer. Folders update as files change (`ctrl+r` refreshes right away), and you can create a new folder while choosing where files go.
 - **Server to server.** `copy` reads the source once and uploads to every destination at the same time. The machines don't need to reach each other or have keys for each other.
 - **Survives bad connections.** Interrupted transfers resume where they stopped. Files are written to a temporary name and renamed when complete, so you never get a half-written file under the real name.
 - **Secure by default.** Host keys are verified, passwords and passphrases live in the OS keychain, and your `~/.ssh/config` works, including `ProxyJump`.

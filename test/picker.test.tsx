@@ -93,7 +93,7 @@ describe('picker model', () => {
       deep: undefined,
       shortcuts: [],
     });
-    expect(rows.map((row) => row.kind)).toEqual(['here', 'entry', 'entry']);
+    expect(rows.map((row) => row.kind)).toEqual(['here', 'new', 'entry', 'entry']);
 
     const filtered = buildRows({
       fs: posixFs,
