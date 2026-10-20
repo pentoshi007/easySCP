@@ -18,6 +18,7 @@ import { type Hint, KeyHints } from '../ui/components/KeyHints.js';
 import { Spinner } from '../ui/components/Spinner.js';
 import { TransferView } from '../ui/components/TransferView.js';
 import { applyKey } from '../ui/editor.js';
+import { isPlain } from '../ui/keys.js';
 import { moveCursor } from '../ui/list.js';
 import { Browser } from '../ui/picker/Browser.js';
 import { ConfirmPrompt } from '../ui/prompts/ConfirmPrompt.js';
@@ -102,7 +103,7 @@ const HELP: Hint[] = [
   ['n', 'new folder'],
   ['r', 'rename'],
   ['d delete', 'delete'],
-  ['/', 'filter by name'],
+  ['/', 'filter by name, tab selects matches'],
   ['g', 'go to a folder'],
   ['~', 'home folder'],
   ['.', 'show or hide hidden files'],
@@ -446,9 +447,20 @@ export function Explorer({
     if (dir) target.open(dir);
   }
 
+  function toggleCurrent() {
+    const entry = pane.current;
+    if (!entry) return;
+    pane.toggle(entry);
+    pane.moveTo(Math.min(pane.cursor.index + 1, pane.rows.length - 1));
+  }
+
   function filterKey(input: string, key: Key) {
-    if (key.return || key.tab) {
+    if (key.return) {
       setFiltering(false);
+      return;
+    }
+    if (key.tab) {
+      toggleCurrent();
       return;
     }
     if (key.escape) {
@@ -467,6 +479,58 @@ export function Explorer({
       key,
     );
     if (edited) pane.setFilter(edited.value);
+  }
+
+  function command(input: string) {
+    switch (input) {
+      case ' ':
+        toggleCurrent();
+        return;
+      case 'a':
+        pane.toggleAll();
+        return;
+      case 'c':
+        void perform(() => copy(pane, other, active === 0 ? 'upload' : 'download'));
+        return;
+      case 'n':
+        void perform(() => makeFolder(pane));
+        return;
+      case 'r':
+        void perform(() => rename(pane));
+        return;
+      case 'd':
+        void perform(() => remove(pane));
+        return;
+      case 'g':
+        void perform(() => goTo(pane));
+        return;
+      case '/':
+        setFiltering(true);
+        return;
+      case '.':
+        setShowHidden((value) => !value);
+        return;
+      case '~':
+        pane.open(pane.fs.home);
+        return;
+      case '?':
+        setHelp(true);
+        return;
+      case 'q':
+        finish('quit');
+        return;
+      default:
+        return;
+    }
+  }
+
+  function controlCommand(input: string) {
+    if (input === 'r') {
+      if (lost || sides.some((side) => side.fs.closed)) finish('reconnect');
+      else for (const side of panes) side.refresh(side.current?.name);
+    } else if (input === 'a') {
+      pane.toggleAll();
+    }
   }
 
   useInput(
@@ -498,40 +562,16 @@ export function Explorer({
         if (entry?.kind === 'dir') pane.open(entry.path);
       } else if (key.leftArrow || key.backspace) {
         pane.up();
-      } else if (input === ' ') {
-        if (entry) {
-          pane.toggle(entry);
-          pane.moveTo(Math.min(pane.cursor.index + 1, pane.rows.length - 1));
-        }
-      } else if (input === 'a' || (key.ctrl && input === 'a')) {
-        pane.toggleAll();
-      } else if (input === 'c') {
-        void perform(() => copy(pane, other, active === 0 ? 'upload' : 'download'));
-      } else if (input === 'n') {
-        void perform(() => makeFolder(pane));
-      } else if (input === 'r' && !key.ctrl) {
-        void perform(() => rename(pane));
-      } else if (input === 'd' || key.delete) {
+      } else if (key.delete) {
         void perform(() => remove(pane));
-      } else if (input === 'g') {
-        void perform(() => goTo(pane));
-      } else if (input === '/') {
-        setFiltering(true);
-      } else if (input === '.') {
-        setShowHidden((value) => !value);
-      } else if (input === '~') {
-        pane.open(pane.fs.home);
-      } else if (key.ctrl && input === 'r') {
-        if (lost || sides.some((side) => side.fs.closed)) finish('reconnect');
-        else for (const side of panes) side.refresh(side.current?.name);
-      } else if (input === '?') {
-        setHelp(true);
-      } else if (input === 'q') {
-        finish('quit');
       } else if (key.escape) {
         if (pane.filter) pane.setFilter('');
         else if (pane.selected.size > 0) pane.clearSelection();
         else finish('quit');
+      } else if (key.ctrl) {
+        controlCommand(input);
+      } else if (isPlain(key)) {
+        command(input);
       }
     },
     { isActive: !modal },
@@ -563,8 +603,9 @@ export function Explorer({
   const target = other.label;
   const hints: (Hint | false)[] = filtering
     ? [
-        ['type', 'filter'],
-        ['enter', 'keep'],
+        ['tab', 'select'],
+        ['enter', 'done typing'],
+        ['↑↓', 'move'],
         ['esc', 'clear'],
       ]
     : [

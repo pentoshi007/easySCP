@@ -162,6 +162,8 @@ describe('Browser', () => {
     await view.shows('readme.md');
     expect(view.frame()).toContain('1 selected');
     await view.press('read', TAB, ENTER);
+    expect(view.onSubmit).not.toHaveBeenCalled();
+    await view.press(ENTER);
     expect(view.onSubmit).toHaveBeenCalledWith([
       path.join(root, 'photos', 'cat.png'),
       path.join(root, 'readme.md'),
