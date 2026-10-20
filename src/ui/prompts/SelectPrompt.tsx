@@ -5,7 +5,9 @@ import { Highlight } from '../components/Highlight.js';
 import { type Hint, KeyHints } from '../components/KeyHints.js';
 import { TextField } from '../components/TextField.js';
 import { applyKey, createEditor } from '../editor.js';
+import { isPlain } from '../keys.js';
 import { useListCursor } from '../list.js';
+import { REFINE_HINT, useSearchFocus } from '../search.js';
 import { colors, symbols } from '../theme.js';
 import type { PromptControls } from '../ui.js';
 
@@ -74,10 +76,11 @@ function keyOf<T>(choice: Choice<T>): string {
 interface ChoiceRowsProps<T> {
   state: ReturnType<typeof useChoices<T>>;
   emptyText?: string;
+  typing?: boolean;
   marker?: (choice: Choice<T>, active: boolean) => ReactNode;
 }
 
-function ChoiceRows<T>({ state, emptyText, marker }: ChoiceRowsProps<T>) {
+function ChoiceRows<T>({ state, emptyText, typing = true, marker }: ChoiceRowsProps<T>) {
   const { matches, cursor, size, filterable, query } = state;
   const { columns } = useWindowSize();
   const visible = matches.slice(cursor.offset, cursor.offset + size);
@@ -85,9 +88,19 @@ function ChoiceRows<T>({ state, emptyText, marker }: ChoiceRowsProps<T>) {
   return (
     <>
       {filterable && query.value ? (
-        <Text>
+        <Text wrap="truncate-end">
           <Text color={colors.muted}>filter </Text>
-          <TextField value={query.value} cursor={query.cursor} width={columns - 12} />
+          {typing ? (
+            <TextField value={query.value} cursor={query.cursor} width={columns - 12} />
+          ) : (
+            <Text>
+              {query.value}
+              <Text color={colors.muted}>
+                {'  '}
+                {symbols.dot} {REFINE_HINT}
+              </Text>
+            </Text>
+          )}
         </Text>
       ) : null}
       {cursor.offset > 0 ? (
@@ -145,6 +158,7 @@ function handleFilterKey<T>(
   key: Key,
 ): boolean {
   if (!state.filterable || key.upArrow || key.downArrow) return false;
+  if (!state.query.value && isPlain(key) && input !== '' && !input.trim()) return true;
   const next = applyKey(state.query, input, key);
   if (!next || next === state.query) return Boolean(next);
   state.setQuery(next);
@@ -199,38 +213,56 @@ export function MultiSelectPrompt<T>({
   options: MultiSelectOptions<T>;
 }) {
   const state = useChoices(options);
+  const search = useSearchFocus(state.query.value);
   const [selected, setSelected] = useState(() => new Set(options.selected ?? []));
   const [error, setError] = useState<string>();
+  const highlighted = state.matches[state.cursor.index]?.item;
 
-  const toggle = (value: T) =>
+  const toggleHighlighted = () => {
+    setError(undefined);
+    if (!highlighted || highlighted.disabled) return;
+    const { value } = highlighted;
     setSelected((current) => {
       const next = new Set(current);
       if (next.has(value)) next.delete(value);
       else next.add(value);
       return next;
     });
+  };
+
+  const confirm = () => {
+    const values = options.choices
+      .filter((choice) => selected.has(choice.value))
+      .map((choice) => choice.value);
+    if (values.length === 0 && options.required !== false) {
+      setError('Select at least one with space');
+      return;
+    }
+    controls.submit(values);
+  };
 
   useInput((input, key) => {
     if (key.return) {
-      const values = options.choices
-        .filter((choice) => selected.has(choice.value))
-        .map((choice) => choice.value);
-      if (values.length === 0 && options.required !== false) {
-        setError('Select at least one with space');
-        return;
-      }
-      controls.submit(values);
+      if (search.typing) search.leave();
+      else confirm();
       return;
     }
     if (key.escape) {
-      if (state.query.value) state.setQuery(createEditor());
-      else controls.cancel();
+      if (state.query.value) {
+        state.setQuery(createEditor());
+        search.leave();
+      } else {
+        controls.cancel();
+      }
       return;
     }
-    if (input === ' ' && !key.ctrl) {
-      const choice = state.matches[state.cursor.index]?.item;
-      if (choice && !choice.disabled) toggle(choice.value);
-      setError(undefined);
+    if (key.tab) {
+      toggleHighlighted();
+      if (state.cursor.index < state.matches.length - 1) state.cursor.jump(state.cursor.index + 1);
+      return;
+    }
+    if (input === ' ' && isPlain(key) && !search.typing) {
+      toggleHighlighted();
       return;
     }
     if (key.ctrl && input === 'a') {
@@ -248,15 +280,35 @@ export function MultiSelectPrompt<T>({
       });
       return;
     }
-    if (state.cursor.handle(input, key)) return;
-    handleFilterKey(state, input, key);
+    if (state.cursor.handle(input, key)) {
+      search.leave();
+      return;
+    }
+    if (handleFilterKey(state, input, key)) search.resume();
   });
+
+  const confirmLabel = selected.size > 0 ? `confirm (${selected.size})` : 'confirm';
+  const hints: (Hint | false)[] = search.typing
+    ? [
+        ['tab', 'select'],
+        ['enter', 'done typing'],
+        ['↑↓', 'move'],
+        ['esc', 'clear'],
+      ]
+    : [
+        ['space', 'select'],
+        ['ctrl+a', 'all'],
+        ['enter', confirmLabel],
+        state.filterable && !state.query.value && ['type', 'to filter'],
+        ['esc', state.query.value ? 'clear' : 'back'],
+      ];
 
   return (
     <>
       <ChoiceRows
         state={state}
         emptyText={options.emptyText}
+        typing={search.typing}
         marker={(choice, active) => (
           <Text
             color={
@@ -268,14 +320,7 @@ export function MultiSelectPrompt<T>({
         )}
       />
       {error ? <Text color={colors.danger}>{error}</Text> : null}
-      <KeyHints
-        hints={[
-          ['space', 'toggle'],
-          ['ctrl+a', 'all'],
-          ['enter', `confirm${selected.size ? ` (${selected.size})` : ''}`],
-          ['esc', 'back'],
-        ]}
-      />
+      <KeyHints hints={hints} />
     </>
   );
 }

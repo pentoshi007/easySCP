@@ -11,7 +11,9 @@ import { type Hint, KeyHints } from '../components/KeyHints.js';
 import { Spinner } from '../components/Spinner.js';
 import { TextField } from '../components/TextField.js';
 import { applyKey, createEditor, type EditorState, insertText } from '../editor.js';
+import { isPlain } from '../keys.js';
 import { clampCursor, type ListCursor, moveCursor } from '../list.js';
+import { appendQuery, REFINE_HINT, useSearchFocus } from '../search.js';
 import { colors, symbols, type Tone, toneColor } from '../theme.js';
 import { cacheFor } from './cache.js';
 import { useDeepIndex, useListing } from './hooks.js';
@@ -109,6 +111,8 @@ export function Browser({
     () => (deepOn ? { dir: cwd, filter: query, typedPath: false } : splitQuery(fs, cwd, query)),
     [deepOn, fs, cwd, query],
   );
+  const search = useSearchFocus(view.filter);
+  const typing = mode === 'files' && search.typing;
   const listing = useListing(cache, view.dir, !deepOn);
   const deepView = useDeepIndex(fs, cwd, deepOn, deepGeneration);
   const deep = deepView?.index;
@@ -155,6 +159,7 @@ export function Browser({
     setDeepOn(false);
     setFocus(from);
     setNotice(undefined);
+    search.leave();
   };
 
   const goUp = () => {
@@ -284,8 +289,14 @@ export function Browser({
   const typeText = (text: string) => {
     const clean = sanitize(text);
     if (!clean) return;
-    setQuery((value) => value + clean);
+    setQuery((value) => appendQuery(value, clean));
     setNotice(undefined);
+    search.resume();
+  };
+
+  const finishTyping = () => {
+    if (currentEntry?.kind === 'dir') navigate(currentEntry.path);
+    else search.leave();
   };
 
   const receiveText = (text: string) => {
@@ -331,19 +342,22 @@ export function Browser({
     const moved = moveCursor(cursor, key, input, rows.length, pageSize);
     if (moved) {
       setCursor(moved);
+      search.leave();
       return;
     }
     if (key.escape) {
       if (query || deepOn) {
         setQuery('');
         setDeepOn(false);
+        search.leave();
       } else {
         onCancel();
       }
       return;
     }
     if (key.return) {
-      activate(current);
+      if (typing) finishTyping();
+      else activate(current);
       return;
     }
     if (key.rightArrow) {
@@ -369,6 +383,7 @@ export function Browser({
       setQuery((value) =>
         key.meta || key.ctrl ? dropLastSegment(value) : Array.from(value).slice(0, -1).join(''),
       );
+      search.resume();
       return;
     }
     if (key.ctrl) {
@@ -391,16 +406,18 @@ export function Browser({
           return;
         case 'u':
           setQuery('');
+          search.leave();
           return;
         case 'w':
           setQuery(dropLastSegment);
+          search.resume();
           return;
         default:
           return;
       }
     }
-    if (key.meta) return;
-    if (input === ' ' && mode === 'files' && !query) {
+    if (!isPlain(key)) return;
+    if (input === ' ' && mode === 'files' && !typing) {
       if (currentEntry) toggle(currentEntry);
       return;
     }
@@ -445,26 +462,33 @@ export function Browser({
   );
   const selectedDirs = selectedEntries.filter((entry) => entry.kind === 'dir').length;
   const enterLabel = (() => {
+    if (typing) return currentEntry?.kind === 'dir' ? 'open' : 'done typing';
     if (mode === 'files' && selected.size > 0) return `${action} ${selected.size}`;
     if (current?.kind === 'new') return 'new folder';
     if (current?.kind === 'entry' && current.entry.kind === 'dir') return 'open';
     if (mode === 'dir' && current?.kind === 'entry') return 'open';
     return action;
   })();
+  const searchHints: Hint[] = [
+    ['ctrl+f', deepOn ? 'browse' : 'search all'],
+    ['ctrl+r', 'refresh'],
+  ];
   const hints: (Hint | false)[] = naming
     ? [
         ['enter', 'create'],
         ['esc', 'cancel'],
       ]
-    : [
-        ['↑↓', 'move'],
-        ['←→', 'folders'],
-        mode === 'files' && [query ? 'tab' : 'space', 'select'],
-        ['enter', enterLabel],
-        ['ctrl+f', deepOn ? 'browse' : 'search all'],
-        ['ctrl+r', 'refresh'],
-        ['esc', query || deepOn ? 'clear' : 'back'],
-      ];
+    : typing
+      ? [['tab', 'select'], ['enter', enterLabel], ['↑↓', 'move'], ['esc', 'clear'], ...searchHints]
+      : [
+          ['↑↓', 'move'],
+          ['←→', 'folders'],
+          mode === 'files' && ['space', 'select'],
+          ['enter', enterLabel],
+          ...searchHints,
+          ['esc', query || deepOn ? 'clear' : 'back'],
+        ];
+  const showCaret = mode !== 'files' || typing;
 
   return (
     <>
@@ -490,7 +514,14 @@ export function Browser({
           {query ? (
             <Text>
               {query}
-              <Text inverse> </Text>
+              {showCaret ? (
+                <Text inverse> </Text>
+              ) : (
+                <Text color={colors.muted}>
+                  {'  '}
+                  {symbols.dot} {REFINE_HINT}
+                </Text>
+              )}
             </Text>
           ) : (
             <Text color={colors.muted}>

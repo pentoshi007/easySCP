@@ -84,6 +84,7 @@ export function PaneView({ pane, active, width, height, filtering }: PaneViewPro
   const room = Math.max(4, width - pane.label.length - 7);
   const shownLocation = truncateMiddle(location, room);
 
+  const selection = pane.entries ? selectionInfo(pane.entries, pane.selected) : '';
   const info = filtering
     ? `/${pane.filter}`
     : [
@@ -91,11 +92,12 @@ export function PaneView({ pane, active, width, height, filtering }: PaneViewPro
           ? `${pane.rows.length} of ${pane.listed} match /${pane.filter}`
           : plural(pane.listed, 'item'),
         pane.hidden > 0 ? `${pane.hidden} hidden` : '',
-        pane.entries ? selectionInfo(pane.entries, pane.selected) : '',
+        selection,
       ]
         .filter(Boolean)
         .join(` ${symbols.dot} `);
-  const shownInfo = truncateMiddle(info, Math.max(4, width - 7));
+  const trailing = filtering && selection ? ` ${symbols.dot} ${selection}` : '';
+  const shownInfo = truncateMiddle(info, Math.max(4, width - 7 - trailing.length));
 
   const visible = pane.rows.slice(pane.cursor.offset, pane.cursor.offset + height);
 
@@ -198,10 +200,11 @@ export function PaneView({ pane, active, width, height, filtering }: PaneViewPro
         right={edge.bottomRight}
         width={width}
         color={border}
-        used={shownInfo.length + (filtering ? 1 : 0)}
+        used={shownInfo.length + (filtering ? 1 : 0) + trailing.length}
       >
         <Text color={filtering ? colors.warning : colors.muted}>{shownInfo}</Text>
         {filtering ? <Text inverse> </Text> : null}
+        {trailing ? <Text color={colors.muted}>{trailing}</Text> : null}
       </Rule>
     </Box>
   );
